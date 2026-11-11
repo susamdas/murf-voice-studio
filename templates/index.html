@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murf Voice Studio</title>
+<style>
+  :root {
+    --bg: #f4f6f5; --card: #ffffff; --text: #1d2521; --muted: #5f6b65; --line: #dde3e0;
+    --accent: #0f7a55; --accent-dark: #0b5e41; --accent-soft: #e3f3ec;
+    --danger: #b3261e; --danger-soft: #fbe9e7; --warn: #8a5a00; --warn-soft: #fff4dc;
+    --sub: #f7f9f8; --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 "Segoe UI", "Nirmala UI", "Noto Sans Bengali", system-ui, sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 14px 24px;
+           display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 19px; margin: 0; flex: 1; }
+  header h1 span { color: var(--muted); font-weight: 400; font-size: 14px; margin-left: 8px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; display: grid; gap: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
+  .card h2 { font-size: 16px; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+  .card h2 .step { background: var(--accent); color: #fff; border-radius: 50%; width: 24px; height: 24px;
+                   display: inline-grid; place-items: center; font-size: 13px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  input[type=text], input[type=number], select, textarea {
+    font: inherit; color: var(--text); background: #fff; border: 1px solid #c5cec9; border-radius: 7px; padding: 7px 10px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input[type=range] { accent-color: var(--accent); }
+  textarea { width: 100%; min-height: 150px; resize: vertical; font-size: 16px; }
+  button { font: inherit; font-weight: 600; border-radius: 7px; border: 1px solid #c5cec9; background: #fff;
+           color: var(--text); padding: 7px 14px; cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { background: #eef2f0; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: var(--accent-dark); }
+  button.danger { color: var(--danger); }
+  button.small { padding: 4px 10px; font-size: 13px; }
+  button.link { border: 0; background: none; padding: 0 4px; color: var(--accent-dark); font-size: 12px; text-decoration: underline; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .summary { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .summary b { color: var(--text); font-weight: 600; }
+  .notice { border-radius: 8px; padding: 9px 12px; font-size: 14px; margin-top: 10px; }
+  .notice.warn { background: var(--warn-soft); color: var(--warn); }
+  .notice.error { background: var(--danger-soft); color: var(--danger); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+  .toolbar .spacer { flex: 1; }
+  .check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+  td.text { font-size: 16px; }
+  td.name { font-family: Consolas, monospace; font-size: 13px; white-space: nowrap; }
+  td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tr.main td { border-bottom: 0; padding-bottom: 2px; }
+  tr.ctrl td { background: var(--sub); padding: 6px 8px 10px; }
+  .ctrls { display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: center; font-size: 13px; color: var(--muted); }
+  .ctrls .slider { display: inline-flex; align-items: center; gap: 8px; }
+  .ctrls .slider span.val { min-width: 92px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .ctrls .slider span.val.inherit { color: var(--muted); font-weight: 400; }
+  .ctrls input[type=number] { width: 70px; padding: 3px 6px; }
+  audio { height: 34px; width: 230px; vertical-align: middle; }
+  .pill { display: inline-block; border-radius: 99px; padding: 1px 10px; font-size: 12px; font-weight: 600; background: #eef1ef; color: var(--muted); }
+  .pill.working { background: var(--warn-soft); color: var(--warn); }
+  .pill.done { background: var(--accent-soft); color: var(--accent-dark); }
+  .pill.saved { background: var(--accent); color: #fff; }
+  .pill.error { background: var(--danger-soft); color: var(--danger); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .dur { display: block; font-size: 13px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .err-msg { color: var(--danger); font-size: 13px; margin-top: 3px; }
+  .warn-msg { color: var(--warn); font-size: 13px; margin-top: 3px; }
+  .saved-msg { color: var(--accent-dark); font-size: 12px; margin-top: 3px; word-break: break-all; }
+  .actions { display: flex; gap: 6px; }
+  .empty { color: var(--muted); text-align: center; padding: 20px; }
+  .compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 14px; }
+  .compare-col { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 8px; align-content: start; }
+  .compare-col audio { width: 100%; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .history td { font-size: 13px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1d2521; color: #fff;
+           padding: 10px 18px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 50; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+  /* modal */
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; z-index: 20; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--card); border-radius: 12px; width: min(940px, 100%); padding: 20px; display: grid; gap: 14px; }
+  .modal-head { display: flex; align-items: center; }
+  .modal-head h2 { margin: 0; flex: 1; font-size: 18px; }
+  .pm { display: grid; grid-template-columns: 240px 1fr; gap: 16px; }
+  .pm-list { border: 1px solid var(--line); border-radius: 8px; overflow: auto; max-height: 520px; }
+  .pm-list div { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .pm-list div.active { background: var(--accent-soft); font-weight: 600; }
+  .pm-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-content: start; }
+  .pm-form .wide { grid-column: 1 / -1; }
+  .pm-form input:not([type=range]), .pm-form select { width: 100%; }
+  .pm-form input[type=range] { width: 100%; }
+  .murf-box { grid-column: 1 / -1; background: var(--sub); border: 1px dashed #c5cec9; border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
+  @media (max-width: 760px) { .pm { grid-template-columns: 1fr; } .pm-form { grid-template-columns: 1fr; } audio { width: 180px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Murf Voice Studio <span>local voiceover generator</span></h1>
+  <button id="openFolderBtn">📂 Open output folder</button>
+</header>
+
+<main>
+  <!-- 1. Settings -->
+  <section class="card">
+    <h2><span class="step">1</span> Project and voice</h2>
+    <div class="row">
+      <label class="field">Project name
+        <input type="text" id="project" value="My project" style="width:240px">
+      </label>
+      <label class="field">Voice profile
+        <select id="profileSelect" style="min-width:260px"></select>
+      </label>
+      <button id="manageBtn">⚙ Manage voice profiles</button>
+    </div>
+    <div class="summary" id="profileSummary"></div>
+    <div id="settingsNotice"></div>
+  </section>
+
+  <!-- 2. Script -->
+  <section class="card">
+    <h2><span class="step">2</span> Script — one line = one audio file</h2>
+    <textarea id="script" spellcheck="false" placeholder="shot1 | 5 | স্বপ্ন ছিল, কিন্তু পুঁজি ছিল না।
+shot2 | 5 | গ্রামীণ ব্যাংক এল আমার দোরগোড়ায়।
+
+Format:  name | seconds | text   (name and seconds are optional)
+  shot1 | text          → file shot1, no target length
+  shot1 | 4.5 | text    → file shot1, target 4.5 seconds
+  text                  → file line01, line02, …"></textarea>
+    <div class="toolbar">
+      <button id="sampleBtn" class="small">Insert sample script</button>
+      <span class="muted" id="lineCount"></span>
+    </div>
+  </section>
+
+  <!-- 3. Generate -->
+  <section class="card">
+    <h2><span class="step">3</span> Generate, listen and save</h2>
+    <div class="toolbar" style="margin-top:0">
+      <button class="primary" id="genAllBtn">▶ Generate all</button>
+      <label class="check" title="Adjust the speed and add silence so each line matches its target seconds">
+        <input type="checkbox" id="autoFit"> <b>Auto-fit to video length</b></label>
+      <label class="check"><input type="checkbox" id="autoSave" checked> Save to folder automatically</label>
+      <span class="spacer"></span>
+      <button id="saveAllBtn">💾 Save all</button>
+      <label class="check">Pause <input type="number" id="pause" value="0.5" min="0" max="10" step="0.1" style="width:70px"> s</label>
+      <button id="mergeBtn">🔗 Merge all into one file</button>
+    </div>
+    <div class="muted" id="autoFitHelp" style="margin-top:6px"></div>
+    <div style="overflow-x:auto; margin-top:12px">
+      <table>
+        <thead><tr><th>File name</th><th>Target</th><th>Text</th><th>Status / length</th><th>Listen</th><th></th></tr></thead>
+        <tbody id="linesBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 4. Fit results -->
+  <section class="card" id="fitCard" style="display:none">
+    <h2>Fit results</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Line</th><th>Target sec</th><th>Final sec</th><th>Speech sec</th><th>Speed used</th><th>Tries</th><th>Status</th></tr></thead>
+        <tbody id="fitBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 5. Compare -->
+  <section class="card">
+    <details id="compareDetails">
+      <summary>Compare voices — hear the same line with 2–3 profiles</summary>
+      <div style="margin-top:12px; display:grid; gap:10px">
+        <label class="field">Line to compare
+          <input type="text" id="compareText" placeholder="Type or paste one line">
+        </label>
+        <div class="row" id="compareSelects"></div>
+        <div><button class="primary" id="compareBtn">▶ Generate comparison</button></div>
+      </div>
+      <div class="compare-grid" id="compareResults"></div>
+    </details>
+  </section>
+
+  <!-- 6. History -->
+  <section class="card">
+    <details id="historyDetails">
+      <summary>History (last 100 entries, from history.csv)</summary>
+      <div style="overflow-x:auto; margin-top:10px">
+        <table class="history">
+          <thead><tr><th>Date/time</th><th>Project</th><th>Profile</th><th>File</th><th>Text</th><th>Status</th></tr></thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+</main>
+
+<!-- Profile manager -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Voice profiles</h2>
+      <button id="closeModalBtn">✕ Close</button>
+    </div>
+    <div class="pm">
+      <div>
+        <div class="pm-list" id="pmList"></div>
+        <div class="toolbar">
+          <button class="small" id="pmAdd">+ New</button>
+          <button class="small" id="pmDup">Duplicate</button>
+          <button class="small danger" id="pmDel">Delete</button>
+        </div>
+      </div>
+      <div class="pm-form" id="pmForm">
+        <label class="field wide">Profile name (shown in the dropdown)
+          <input type="text" data-f="name">
+        </label>
+        <label class="field">API key name
+          <select data-f="api_key_name"></select>
+        </label>
+        <label class="field">Murf voice ID
+          <input type="text" data-f="voice_id" placeholder="e.g. Anisha">
+        </label>
+        <label class="field">Locale
+          <input type="text" data-f="locale" placeholder="e.g. bn-IN" list="localeList">
+        </label>
+        <label class="field">Style
+          <input type="text" data-f="style" placeholder="e.g. Conversational" list="styleList">
+        </label>
+        <label class="field">Model
+          <input type="text" data-f="model" placeholder="falcon-2.1">
+        </label>
+        <label class="field">Format
+          <select data-f="format"><option>MP3</option><option>WAV</option></select>
+        </label>
+        <label class="field">Sample rate
+          <select data-f="sample_rate">
+            <option>8000</option><option>16000</option><option selected>24000</option><option>44100</option><option>48000</option>
+          </select>
+        </label>
+        <span></span>
+        <label class="field"><span>Default speed: <span id="pmRateVal">0</span></span>
+          <input type="range" data-f="rate" min="-50" max="50" step="1" value="0">
+        </label>
+        <label class="field"><span>Default pitch: <span id="pmPitchVal">0</span></span>
+          <input type="range" data-f="pitch" min="-50" max="50" step="1" value="0">
+        </label>
+        <div class="murf-box">
+          <div class="row">
+            <button class="small" id="loadVoicesBtn">⬇ Load voices from Murf</button>
+            <span class="muted">Uses the API key selected above. Pick a voice to fill voice ID, locale and style.</span>
+          </div>
+          <div class="row" id="murfPicker" style="display:none">
+            <label class="field">Filter
+              <input type="text" id="voiceFilter" placeholder="name or locale, e.g. bn" style="width:170px">
+            </label>
+            <label class="field" style="flex:1">Voice
+              <select id="murfVoiceSelect" style="width:100%"></select>
+            </label>
+          </div>
+        </div>
+        <datalist id="localeList"></datalist>
+        <datalist id="styleList"><option>Conversational</option></datalist>
+        <div class="wide" id="pmNotice"></div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <span class="muted">Changes are written to voices.json when you click Save.</span>
+      <span class="spacer"></span>
+      <button id="pmCancel">Cancel</button>
+      <button class="primary" id="pmSave">Save profiles</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SAMPLE = `shot1 | 5 | স্বপ্ন ছিল, কিন্তু পুঁজি ছিল না।
+shot2 | 5 | গ্রামীণ ব্যাংক এল আমার দোরগোড়ায়।
+shot3 | 4 | জামানত ছাড়াই ঋণ, এখন আমার নিজের দোকান।
+shot4 | 3.5 | আমার সন্তানরা এখন স্কুলে যায়।
+shot5 | 4 | গ্রামীণ ব্যাংক — সবার জন্য সুযোগ।`;
+
+const $ = (id) => document.getElementById(id);
+let profiles = [];
+let keyNames = [];
+let busy = false;
+let CFG = { rate_min: -50, rate_max: 50, pitch_min: -50, pitch_max: 50,
+            natural_rate_min: -20, natural_rate_max: 20, max_tries: 3, default_lead: 0.5 };
+// Per-line results, kept across re-renders: key = profile + name + target + text
+const lineState = new Map();
+// Per-line manual settings, keyed by file name: {rate, pitch, before, after}
+let overrides = {};
+
+// ------------------------------------------------------------ utilities
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "value") el.value = v;
+    else if (v !== false && v != null) el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c != null) el.append(c instanceof Node ? c : String(c));
+  return el;
+}
+function toast(msg, ms = 3500) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), ms);
+}
+async function api(method, url, body) {
+  let res;
+  try {
+    res = await fetch(url, { method, headers: { "Content-Type": "application/json" },
+                             body: body ? JSON.stringify(body) : undefined });
+  } catch {
+    throw new Error("The app is not running. Start it again with start.bat.");
+  }
+  let data;
+  try { data = await res.json(); } catch { throw new Error(`Unexpected server response (HTTP ${res.status}).`); }
+  if (!data.ok) throw new Error(data.error || "Something went wrong.");
+  return data;
+}
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+const project = () => $("project").value.trim() || "My project";
+const currentProfile = () => profiles.find(p => p.name === $("profileSelect").value);
+const sec = (v) => (v == null || v === "" ? "—" : `${Number(v).toFixed(1)} sec`);
+const signed = (v) => (v > 0 ? "+" + v : String(v));
+const saveOverrides = () => store.set("overrides", JSON.stringify(overrides));
+
+// ------------------------------------------------------------ profiles & keys
+async function loadSettings() {
+  try {
+    const [k, p, c] = await Promise.all([api("GET", "/api/keys"), api("GET", "/api/profiles"), api("GET", "/api/config")]);
+    keyNames = k.keys; profiles = p.profiles; CFG = c;
+  } catch (e) { showNotice("settingsNotice", e.message, "error"); return; }
+  for (const f of ["rate", "pitch"]) {
+    const el = $("pmForm").querySelector(`[data-f="${f}"]`);
+    el.min = CFG[f + "_min"]; el.max = CFG[f + "_max"];
+  }
+  $("autoFitHelp").textContent = `Auto-fit: lines with a target (name | seconds | text) are regenerated up to ${CFG.max_tries} times ` +
+    `with speed between ${signed(CFG.natural_rate_min)} and ${signed(CFG.natural_rate_max)}, then padded with silence ` +
+    `(${CFG.default_lead} s at the start, the rest at the end). Each try uses Murf credits.`;
+  fillProfileSelect();
+}
+function fillProfileSelect(selectName) {
+  const sel = $("profileSelect"), prev = selectName || sel.value || store.get("profile");
+  sel.replaceChildren(...profiles.map(p => h("option", { value: p.name }, p.name)));
+  if (profiles.some(p => p.name === prev)) sel.value = prev;
+  renderCompareSelects();
+  onProfileChange();
+}
+function onProfileChange() {
+  const p = currentProfile();
+  store.set("profile", $("profileSelect").value);
+  const s = $("profileSummary"); s.replaceChildren();
+  $("settingsNotice").replaceChildren();
+  if (!profiles.length) {
+    showNotice("settingsNotice", "No voice profiles yet. Click “Manage voice profiles” to add one.", "warn");
+  } else if (p) {
+    s.append("Voice ", h("b", {}, p.voice_id), " · locale ", h("b", {}, p.locale || "default"),
+             " · style ", h("b", {}, p.style || "default"), " · speed ", h("b", {}, signed(p.rate || 0)),
+             " · pitch ", h("b", {}, signed(p.pitch || 0)), " · ", h("b", {}, p.format), " ",
+             h("b", {}, p.sample_rate + " Hz"), " · API key ", h("b", {}, p.api_key_name || "—"));
+    if (!keyNames.includes(p.api_key_name))
+      showNotice("settingsNotice", `API key “${p.api_key_name || "(none)"}” is not in your .env file. ` +
+        (keyNames.length ? `Available keys: ${keyNames.join(", ")}.` : "Add a line like MURF_KEY_MAIN=your_key to .env and restart the app."), "warn");
+  }
+  renderLines();
+}
+function showNotice(id, msg, kind) {
+  $(id).replaceChildren(h("div", { class: `notice ${kind}` }, msg));
+}
+
+// ------------------------------------------------------------ script lines
+const NUM = /^\d+(?:[.,]\d+)?\s*(?:s|sec|secs|seconds?)?$/i;
+function parseScript() {
+  const out = [];
+  $("script").value.split(/\r?\n/).forEach(raw => {
+    const line = raw.trim();
+    if (!line) return;
+    let parts = line.split("|").map(s => s.trim());
+    let name = "", target = null, text;
+    if (parts.length >= 3 && NUM.test(parts[1])) {           // name | seconds | text
+      name = parts[0]; target = parseFloat(parts[1].replace(",", ".")); text = parts.slice(2).join(" | ");
+    } else if (parts.length >= 2) {                           // name | text
+      name = parts[0]; text = parts.slice(1).join(" | ");
+    } else text = line;
+    if (!text) return;
+    if (!name) name = "line" + String(out.length + 1).padStart(2, "0");
+    out.push({ name, target, text });
+  });
+  return out;
+}
+function stateFor(line) {
+  const key = [$("profileSelect").value, line.name, line.target, line.text].join("\u0000");
+  if (!lineState.has(key)) lineState.set(key, { status: "waiting" });
+  return lineState.get(key);
+}
+const ov = (line) => (overrides[line.name] ||= {});
+const STATUS_LABEL = { waiting: "waiting", working: "generating…", saving: "saving…", done: "ready",
+                       saved: "saved", error: "error" };
+
+function slider(line, field) {
+  const p = currentProfile() || {};
+  const o = ov(line);
+  const label = field === "rate" ? "Speed" : "Pitch";
+  const has = o[field] != null;
+  const value = has ? o[field] : (p[field] || 0);
+  const val = h("span", { class: "val" + (has ? "" : " inherit") }, `${label}: ${signed(value)}${has ? "" : " (profile)"}`);
+  const input = h("input", { type: "range", min: CFG[field + "_min"], max: CFG[field + "_max"], step: 1, value,
+                             disabled: busy, "aria-label": `${label} for ${line.name}` });
+  input.addEventListener("input", () => { val.textContent = `${label}: ${signed(+input.value)}`; val.classList.remove("inherit"); });
+  input.addEventListener("change", () => { o[field] = +input.value; saveOverrides(); renderLines(); });
+  const reset = has ? h("button", { class: "link", title: "Use the profile value", disabled: busy,
+                                    onclick: () => { delete o[field]; saveOverrides(); renderLines(); } }, "reset") : null;
+  return h("span", { class: "slider" }, val, input, reset);
+}
+function silenceBox(line, field, label) {
+  const o = ov(line);
+  const input = h("input", { type: "number", min: 0, max: 30, step: 0.1, value: o[field] ?? "", placeholder: "0",
+                             disabled: busy, "aria-label": `${label} for ${line.name}` });
+  input.addEventListener("change", () => {
+    const v = input.value === "" ? null : Math.max(0, parseFloat(input.value));
+    if (v == null || isNaN(v)) delete o[field]; else o[field] = v;
+    saveOverrides();
+  });
+  return h("label", { class: "check" }, label, input, "s");
+}
+
+function renderLines() {
+  const lines = parseScript();
+  const withTarget = lines.filter(l => l.target != null).length;
+  $("lineCount").textContent = lines.length
+    ? `${lines.length} line${lines.length > 1 ? "s" : ""}` + (withTarget ? ` · ${withTarget} with a target length` : "") : "";
+  const body = $("linesBody");
+  if (!lines.length) {
+    body.replaceChildren(h("tr", {}, h("td", { colspan: 6, class: "empty" }, "Write your script in step 2 — the lines will appear here.")));
+    renderFitTable([]); return;
+  }
+  const rows = [];
+  for (const line of lines) {
+    const st = stateFor(line);
+    const pillClass = { working: "working", saving: "working", done: "done", saved: "saved", error: "error" }[st.status] || "";
+    rows.push(h("tr", { class: "main" },
+      h("td", { class: "name" }, line.name),
+      h("td", { class: "num" }, line.target != null ? `${line.target} sec` : "—"),
+      h("td", { class: "text" }, line.text,
+        st.error ? h("div", { class: "err-msg" }, st.error) : null,
+        st.result?.warning ? h("div", { class: "warn-msg" }, "⚠ " + st.result.warning) : null,
+        st.savedTo ? h("div", { class: "saved-msg" }, "✔ " + st.savedTo) : null),
+      h("td", { class: "num" }, h("span", { class: "pill " + pillClass }, STATUS_LABEL[st.status]),
+        st.result ? h("span", { class: "dur" }, sec(st.result.duration)) : null),
+      h("td", {}, st.url ? h("audio", { controls: true, preload: "metadata", src: st.url }) : h("span", { class: "muted" }, "—")),
+      h("td", {}, h("div", { class: "actions" },
+        h("button", { class: "small", disabled: busy || !currentProfile(),
+                      onclick: () => runBatch(generateOne, [line], null) }, st.url ? "Regenerate" : "Generate"),
+        h("button", { class: "small", disabled: busy || !st.previewId || st.status === "saved",
+                      onclick: () => runBatch(saveOne, [line], null) }, "Save")))));
+    rows.push(h("tr", { class: "ctrl" }, h("td", {}), h("td", { colspan: 5 }, h("div", { class: "ctrls" },
+      slider(line, "rate"), slider(line, "pitch"),
+      silenceBox(line, "before", "Silence before"), silenceBox(line, "after", "Silence after")))));
+  }
+  body.replaceChildren(...rows);
+  ["genAllBtn", "saveAllBtn", "mergeBtn", "compareBtn"].forEach(id => $(id).disabled = busy);
+  renderFitTable(lines);
+}
+
+function renderFitTable(lines) {
+  const shown = lines.filter(l => l.target != null || stateFor(l).result);
+  $("fitCard").style.display = shown.some(l => l.target != null) ? "" : "none";
+  $("fitBody").replaceChildren(...shown.map(line => {
+    const st = stateFor(line), r = st.result;
+    let status;
+    if (st.status === "working") status = h("span", { class: "pill working" }, "generating…");
+    else if (st.status === "error") status = h("span", { class: "pill error" }, "error");
+    else if (!r) status = h("span", { class: "muted" }, "not generated");
+    else if (r.fit_status === "fitted") {
+      const pad = r.duration - r.speech_duration;
+      status = h("span", { class: "pill done" }, pad > 0.05 ? `✔ fitted (+${pad.toFixed(1)} s silence)` : "✔ fitted");
+    } else if (r.fit_status === "too_long") status = h("span", { class: "pill warn" }, "⚠ too long");
+    else if (line.target != null && r.duration > line.target + 0.05) status = h("span", { class: "pill warn" }, "longer than target");
+    else status = h("span", { class: "pill" }, line.target != null ? "auto-fit off" : "no target");
+    return h("tr", {},
+      h("td", { class: "name" }, line.name),
+      h("td", { class: "num" }, line.target != null ? line.target.toFixed(1) : "—"),
+      h("td", { class: "num" }, r ? r.duration.toFixed(2) : "—"),
+      h("td", { class: "num" }, r ? r.speech_duration.toFixed(2) : "—"),
+      h("td", { class: "num", title: r ? r.attempts.map(a => `speed ${signed(a.rate)} → ${a.duration} s`).join("\n") : "" },
+        r ? signed(r.rate) : "—"),
+      h("td", { class: "num" }, r ? r.tries : "—"),
+      h("td", {}, status));
+  }));
+}
+
+async function generateOne(line) {
+  const p = currentProfile();
+  if (!p) { toast("Choose a voice profile first."); return false; }
+  const st = stateFor(line), o = ov(line);
+  Object.assign(st, { status: "working", error: null, savedTo: null });
+  renderLines();
+  try {
+    const r = await api("POST", "/api/generate", {
+      project: project(), profile: p.name, file_name: line.name, text: line.text,
+      rate: o.rate ?? null, pitch: o.pitch ?? null, target: line.target,
+      silence_before: o.before ?? null, silence_after: o.after ?? null, auto_fit: $("autoFit").checked });
+    Object.assign(st, { status: "done", previewId: r.preview_id, url: r.url + "?t=" + Date.now(), result: r });
+    if ($("autoSave").checked) await saveOne(line);
+    return true;
+  } catch (e) {
+    Object.assign(st, { status: "error", error: e.message, previewId: null, url: null, result: null });
+    return false;
+  }
+}
+async function saveOne(line) {
+  const st = stateFor(line);
+  if (!st.previewId) return false;
+  st.status = "saving"; renderLines();
+  try {
+    const r = await api("POST", "/api/save", { preview_id: st.previewId, project: project(), file_name: line.name });
+    Object.assign(st, { status: "saved", savedTo: r.saved_to, error: null });
+    return true;
+  } catch (e) {
+    Object.assign(st, { status: "error", error: e.message });
+    return false;
+  }
+}
+async function runBatch(fn, lines, label) {
+  if (busy) return;
+  busy = true; renderLines();
+  let okCount = 0;
+  for (const line of lines) {
+    if (await fn(line)) okCount++;
+    renderLines();
+    // stop early if the key is wrong or out of credits - no point continuing
+    const err = stateFor(line).error || "";
+    if (/Invalid API key|Out of credits|not found/.test(err)) { toast("Stopped: " + err, 7000); break; }
+  }
+  busy = false; renderLines(); refreshHistory();
+  if (label && lines.length) {
+    const tooLong = lines.filter(l => stateFor(l).result?.fit_status === "too_long").length;
+    toast(`${label}: ${okCount} of ${lines.length} done.` + (tooLong ? ` ${tooLong} line(s) too long — see Fit results.` : ""), 5000);
+  }
+}
+
+$("genAllBtn").onclick = () => {
+  const lines = parseScript();
+  if (!lines.length) return toast("Write at least one line in the script first.");
+  if (!currentProfile()) return toast("Choose a voice profile first.");
+  if ($("autoFit").checked && !lines.some(l => l.target != null))
+    toast("Auto-fit is on, but no line has a target. Use  name | seconds | text.", 6000);
+  runBatch(generateOne, lines, "Generate all");
+};
+$("saveAllBtn").onclick = () => {
+  const lines = parseScript().filter(l => stateFor(l).previewId && stateFor(l).status !== "saved");
+  if (!lines.length) return toast("Nothing new to save. Generate lines first.");
+  runBatch(saveOne, lines, "Save all");
+};
+$("mergeBtn").onclick = async () => {
+  const lines = parseScript();
+  const ready = lines.filter(l => stateFor(l).previewId);
+  if (!ready.length) return toast("Generate the lines first, then merge.");
+  if (ready.length < lines.length && !confirm(`Only ${ready.length} of ${lines.length} lines are generated. Merge those?`)) return;
+  try {
+    // uses the final (fitted / padded) file of each line
+    const r = await api("POST", "/api/merge", { preview_ids: ready.map(l => stateFor(l).previewId),
+      project: project(), pause: parseFloat($("pause").value) || 0 });
+    toast("Merged file saved: " + r.saved_to, 6000);
+    refreshHistory();
+  } catch (e) { toast(e.message, 7000); }
+};
+$("script").addEventListener("input", () => { renderLines(); store.set("script", $("script").value); });
+$("project").addEventListener("change", () => store.set("project", $("project").value));
+$("autoFit").addEventListener("change", () => store.set("autoFit", $("autoFit").checked ? "1" : "0"));
+$("sampleBtn").onclick = () => { $("script").value = SAMPLE; $("script").dispatchEvent(new Event("input")); };
+$("profileSelect").onchange = onProfileChange;
+$("openFolderBtn").onclick = async () => {
+  try { await api("POST", "/api/open-folder", { project: project() }); }
+  catch (e) { toast(e.message, 6000); }
+};
+
+// ------------------------------------------------------------ compare voices
+function renderCompareSelects() {
+  const box = $("compareSelects");
+  const prev = [...box.querySelectorAll("select")].map(s => s.value);
+  box.replaceChildren(...[0, 1, 2].map(i => h("label", { class: "field" }, `Profile ${i + 1}${i === 2 ? " (optional)" : ""}`,
+    h("select", { style: "min-width:220px" },
+      i === 2 ? h("option", { value: "" }, "— none —") : null,
+      profiles.map(p => h("option", { value: p.name }, p.name))))));
+  box.querySelectorAll("select").forEach((s, i) => {
+    if (prev[i] !== undefined && [...s.options].some(o => o.value === prev[i])) s.value = prev[i];
+    else if (i < 2 && profiles[i]) s.value = profiles[i].name;
+  });
+}
+$("compareBtn").onclick = async () => {
+  const text = $("compareText").value.trim();
+  const names = [...new Set([...$("compareSelects").querySelectorAll("select")].map(s => s.value).filter(Boolean))];
+  if (!text) return toast("Type the line you want to compare.");
+  if (names.length < 2) return toast("Choose at least 2 different profiles.");
+  const cols = names.map(name => ({ name, col: h("div", { class: "compare-col" }, h("b", {}, name),
+                                                 h("span", { class: "pill working" }, "generating…")) }));
+  $("compareResults").replaceChildren(...cols.map(c => c.col));
+  busy = true; renderLines();
+  for (const { name, col } of cols) {
+    try {
+      const r = await api("POST", "/api/generate", { project: project(), profile: name, file_name: "compare", text });
+      const saveBtn = h("button", { class: "small" }, "Save this one");
+      saveBtn.onclick = async () => {
+        try {
+          const s = await api("POST", "/api/save", { preview_id: r.preview_id, project: project(), file_name: "compare" });
+          saveBtn.replaceWith(h("div", { class: "saved-msg" }, "✔ " + s.saved_to));
+        } catch (e) { toast(e.message); }
+      };
+      col.replaceChildren(h("b", {}, name), h("span", { class: "muted" }, `${sec(r.duration)} · speed ${signed(r.rate)}`),
+                          h("audio", { controls: true, src: r.url }), h("div", {}, saveBtn));
+    } catch (e) {
+      col.replaceChildren(h("b", {}, name), h("span", { class: "pill error" }, "error"), h("div", { class: "err-msg" }, e.message));
+    }
+  }
+  busy = false; renderLines(); refreshHistory();
+};
+
+// ------------------------------------------------------------ history
+async function refreshHistory() {
+  if (!$("historyDetails").open) return;
+  try {
+    const { rows } = await api("GET", "/api/history");
+    $("historyBody").replaceChildren(...(rows.length ? rows.map(r => h("tr", {},
+      h("td", { style: "white-space:nowrap" }, r.datetime), h("td", {}, r.project), h("td", {}, r.profile),
+      h("td", {}, r.file_name), h("td", {}, r.text),
+      h("td", { style: r.status.startsWith("error") ? "color:var(--danger)" : r.status.startsWith("too long") ? "color:var(--warn)" : "" }, r.status)))
+      : [h("tr", {}, h("td", { colspan: 6, class: "empty" }, "No history yet."))]));
+  } catch (e) { toast(e.message); }
+}
+$("historyDetails").addEventListener("toggle", refreshHistory);
+
+// ------------------------------------------------------------ profile manager
+let draft = [], sel = 0, murfVoices = [];
+const BLANK = { name: "New profile", voice_id: "", style: "Conversational", locale: "", model: "falcon-2.1",
+                api_key_name: "", format: "MP3", sample_rate: 24000, rate: 0, pitch: 0 };
+const NUMERIC = new Set(["sample_rate", "rate", "pitch"]);
+const fields = () => [...$("pmForm").querySelectorAll("[data-f]")];
+
+function openManager() {
+  draft = profiles.map(p => ({ ...p }));
+  sel = Math.max(0, profiles.findIndex(p => p.name === $("profileSelect").value));
+  if (!draft.length) { draft.push({ ...BLANK, api_key_name: keyNames[0] || "" }); sel = 0; }
+  $("pmNotice").replaceChildren();
+  $("modal").classList.add("open");
+  renderManager();
+}
+function updateSliderLabels() {
+  const f = (n) => $("pmForm").querySelector(`[data-f="${n}"]`);
+  $("pmRateVal").textContent = signed(+f("rate").value);
+  $("pmPitchVal").textContent = signed(+f("pitch").value);
+}
+function renderManager() {
+  $("pmList").replaceChildren(...draft.map((p, i) =>
+    h("div", { class: i === sel ? "active" : "", onclick: () => { readForm(); sel = i; renderManager(); } }, p.name || "(no name)")));
+  const p = draft[sel] || {};
+  const keySel = $("pmForm").querySelector('[data-f="api_key_name"]');
+  const opts = [...new Set([...keyNames, p.api_key_name].filter(Boolean))];
+  keySel.replaceChildren(...opts.map(k => h("option", { value: k }, keyNames.includes(k) ? k : `${k} (not in .env)`)));
+  if (!opts.length) keySel.append(h("option", { value: "" }, "No keys in .env"));
+  fields().forEach(el => { el.value = p[el.dataset.f] ?? (NUMERIC.has(el.dataset.f) ? 0 : ""); });
+  updateSliderLabels();
+  $("pmDel").disabled = !draft.length; $("pmDup").disabled = !draft.length;
+  fields().forEach(el => el.disabled = !draft.length);
+}
+function readForm() {
+  if (!draft[sel]) return;
+  fields().forEach(el => { draft[sel][el.dataset.f] = NUMERIC.has(el.dataset.f) ? Number(el.value) : el.value.trim(); });
+}
+$("pmForm").addEventListener("input", (e) => {
+  if (e.target.type === "range") updateSliderLabels();
+  if (e.target.dataset.f === "name") { readForm(); $("pmList").children[sel].textContent = draft[sel].name || "(no name)"; }
+});
+$("pmAdd").onclick = () => { readForm(); draft.push({ ...BLANK, api_key_name: keyNames[0] || "" }); sel = draft.length - 1; renderManager(); };
+$("pmDup").onclick = () => {
+  readForm();
+  const copy = { ...draft[sel] };
+  let n = 2, base = copy.name.replace(/ \(copy( \d+)?\)$/, "");
+  copy.name = `${base} (copy)`;
+  while (draft.some(p => p.name === copy.name)) copy.name = `${base} (copy ${n++})`;
+  draft.splice(sel + 1, 0, copy); sel++; renderManager();
+};
+$("pmDel").onclick = () => {
+  if (!confirm(`Delete profile “${draft[sel].name}”?`)) return;
+  draft.splice(sel, 1); sel = Math.max(0, sel - 1); renderManager();
+};
+const closeManager = () => $("modal").classList.remove("open");
+$("pmCancel").onclick = closeManager;
+$("closeModalBtn").onclick = closeManager;
+$("pmSave").onclick = async () => {
+  readForm();
+  try {
+    const r = await api("PUT", "/api/profiles", { profiles: draft });
+    profiles = r.profiles;
+    fillProfileSelect(draft[sel]?.name);
+    closeManager();
+    toast("Voice profiles saved.");
+  } catch (e) { showNotice("pmNotice", e.message, "error"); }
+};
+
+// Load voices from Murf
+$("loadVoicesBtn").onclick = async () => {
+  readForm();
+  const key = draft[sel]?.api_key_name;
+  if (!key) return showNotice("pmNotice", "Choose an API key name first.", "warn");
+  const btn = $("loadVoicesBtn"); btn.disabled = true; btn.textContent = "Loading…";
+  try {
+    const r = await api("GET", `/api/murf-voices?key=${encodeURIComponent(key)}&model=${encodeURIComponent(draft[sel].model || "falcon-2.1")}`);
+    murfVoices = r.voices;
+    $("murfPicker").style.display = "";
+    $("pmNotice").replaceChildren();
+    renderVoiceOptions();
+    toast(`Loaded ${murfVoices.length} voices from Murf.`);
+  } catch (e) { showNotice("pmNotice", e.message, "error"); }
+  btn.disabled = false; btn.textContent = "⬇ Load voices from Murf";
+};
+function renderVoiceOptions() {
+  const q = $("voiceFilter").value.trim().toLowerCase();
+  const opts = [];
+  for (const v of murfVoices) for (const [loc, d] of Object.entries(v.locales)) {
+    const label = `${v.display_name} — ${d.detail} (${loc})${v.description ? " · " + v.description : ""}`;
+    if (q && !label.toLowerCase().includes(q) && !v.voice_id.toLowerCase().includes(q)) continue;
+    opts.push(h("option", { value: JSON.stringify({ id: v.voice_id, loc, styles: d.styles }) }, label));
+  }
+  $("murfVoiceSelect").replaceChildren(h("option", { value: "" }, opts.length ? `— choose a voice (${opts.length}) —` : "No voices match"), ...opts);
+}
+$("voiceFilter").addEventListener("input", renderVoiceOptions);
+$("murfVoiceSelect").onchange = (e) => {
+  if (!e.target.value) return;
+  const { id, loc, styles } = JSON.parse(e.target.value);
+  const f = (name) => $("pmForm").querySelector(`[data-f="${name}"]`);
+  f("voice_id").value = id;
+  f("locale").value = loc;
+  $("styleList").replaceChildren(...styles.map(s => h("option", {}, s)));
+  if (styles.length && !styles.includes(f("style").value)) f("style").value = styles[0];
+  readForm();
+};
+$("manageBtn").onclick = openManager;
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeManager(); });
+
+// ------------------------------------------------------------ start
+{
+  const s = store.get("script"); if (s) $("script").value = s;
+  const pj = store.get("project"); if (pj) $("project").value = pj;
+  $("autoFit").checked = store.get("autoFit") === "1";
+  try { overrides = JSON.parse(store.get("overrides") || "{}") || {}; } catch { overrides = {}; }
+}
+renderLines();
+loadSettings();
+</script>
+</body>
+</html>

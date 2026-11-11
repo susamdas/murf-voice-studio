@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Rina – Bangla female",
+    "voice_id": "Anisha",
+    "style": "Conversational",
+    "locale": "bn-IN",
+    "model": "falcon-2.1",
+    "api_key_name": "MAIN",
+    "format": "MP3",
+    "sample_rate": 24000,
+    "rate": 0,
+    "pitch": 0
+  }
+]
