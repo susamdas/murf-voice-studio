@@ -1,0 +1,16 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+
+# Generated audio and logs
+output/*
+!output/.gitkeep
+.preview_cache/
+history.csv
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+voices.json.tmp
