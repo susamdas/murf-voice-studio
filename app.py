@@ -280,6 +280,27 @@ def _history_status(r: dict) -> str:
     return text + (f" - {r['warning']}" if r.get("warning") else "")
 
 
+def _merge_tag_only(segments: list[str], gaps: list[float], trail: float):
+    """A [pause] can leave a part that is only tags, e.g. '[evil laugh]'.
+    ElevenLabs rejects parts without words, and removing it for Murf would
+    shift the pauses. So attach it to the next part ('...' stands in for the
+    pause), or to the previous part if it is the last one."""
+    segs, gs = list(segments), list(gaps)  # gs[i] = silence between segs[i] and segs[i+1]
+    i = 0
+    while i < len(segs) and len(segs) > 1:
+        if EMOTION_TAG_RE.sub("", segs[i]).strip():
+            i += 1
+            continue
+        if i + 1 < len(segs):
+            segs[i + 1] = f"{segs[i]} ... {segs[i + 1]}"
+            del segs[i], gs[i]
+        else:
+            segs[i - 1] = f"{segs[i - 1]} {segs[i]}"
+            trail += gs[i - 1]
+            del segs[i], gs[i - 1]
+    return segs, gs, trail
+
+
 @app.post("/api/generate")
 def api_generate():
     data = request.get_json(silent=True) or {}
@@ -311,6 +332,10 @@ def api_generate():
         segments, lead, gaps, trail = autofit.split_pauses(text)
     except MurfError as exc:
         return fail(str(exc))
+    if segments and not any(EMOTION_TAG_RE.sub("", seg).strip() for seg in segments):
+        return fail("The line is empty: it has no words, only tags. ElevenLabs and Murf need some text to speak, "
+                    "e.g. [evil laugh] Ha ha ha!")
+    segments, gaps, trail = _merge_tag_only(segments, gaps, trail)
     note = None
     if engine == "murf":
         stripped = [re.sub(r"\s{2,}", " ", EMOTION_TAG_RE.sub("", seg)).strip() for seg in segments]
