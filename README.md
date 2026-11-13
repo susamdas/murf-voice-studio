@@ -69,6 +69,35 @@ The **Fit results** table shows each line's target, final length, speech length,
 
 **Changing the limits:** the natural speed range (−20 to +20) and the number of tries (3) are set at the top of `autofit.py` (`NATURAL_RATE_MIN`, `NATURAL_RATE_MAX`, `MAX_TRIES`).
 
+### Dramatic pauses inside a line: `[pause]`
+Murf's Falcon voices have no pause control, so the app adds the pauses itself. Put `[pause X]` anywhere in a line, where X is in seconds:
+```
+crystal | এটা... [pause 1.5] বাবার ক্রিস্টাল!
+```
+- The app sends "এটা..." and "বাবার ক্রিস্টাল!" to Murf separately and puts exactly 1.5 s of silence between them in one file.
+- Other forms that work: `[pause 1]`, `[pause 0.5s]`, `[pause 800ms]`, `[pause 2 sec]`. The longest pause is 10 seconds.
+- A `[pause]` at the start or end of a line adds silence there.
+- Each part between pauses is a separate Murf generation, so it uses a little more credit.
+- Auto-fit works with pauses too: the pauses stay the same length and only the speech speed changes.
+- Click **+ Insert [pause 1]** to put a pause where your cursor is.
+
+### Character voices (child, old, cartoon, horror)
+For Bangla, Murf's Falcon model has only three voices: **Debarati**, **Subhankar** and **Anisha**. All of them use the Conversational style only. Every character is therefore one of these voices with different pitch and speed. `voices.json` has ready-made profiles:
+
+| Profiles | Voice | Speed / Pitch |
+|---|---|---|
+| Child – girl / boy | Debarati / Subhankar | +8 / +25, +8 / +30 |
+| Teen – female / male | Anisha / Subhankar | +4 / +8, +4 / +10 |
+| Adult – woman / man | Debarati / Subhankar | 0 / 0 |
+| Old – woman / man | Debarati / Subhankar | −12 / −10, −12 / −15 |
+| Cartoon – squeaky / gruff | Debarati / Subhankar | +12 / +40, −5 / −35 |
+| Horror – deep narrator | Subhankar | −20 / −15 |
+| Horror – scared whisper | Debarati | −15 / −5 |
+| Horror – shock | Debarati | +10 / +15 |
+
+These are starting points, so adjust them by ear. If a voice sounds robotic, move its pitch closer to 0.
+For horror or thriller ads, combine a Horror profile with `[pause]` tags, short broken sentences, and background music and sound effects in Canva. You can also add reverb and echo in Audacity, which is free.
+
 ### Silence before / after
 Each line has **Silence before** and **Silence after** boxes, in seconds:
 - With Auto-fit **off**, this silence is simply added to the start and end of the file.
@@ -109,7 +138,7 @@ Every generate, save and error is written to `history.csv`, which opens in Excel
 | `app.py` | The web app (Flask) |
 | `murf_client.py` | Talks to the Murf API. This is the only place that uses the key values. |
 | `audio_tools.py` | Measures audio length, adds silence and merges clips (no extra software needed) |
-| `autofit.py` | Fits a line to its target length (speed tries, silence) |
+| `autofit.py` | Fits a line to its target length (speed tries, silence) and reads `[pause]` tags |
 | `voices.json` | Your voice profiles |
 | `.env` | Your private API keys (not in Git) |
 | `.env.example` | Template for `.env`, with no real keys |

@@ -48,26 +48,6 @@ def _read_wav(data: bytes) -> tuple[tuple[int, int, int], bytes]:
     raise MergeError("WAV clip has no audio data.")
 
 
-def merge_wav(clips: list[bytes], pause_s: float) -> bytes:
-    parsed = [_read_wav(c) for c in clips]
-    fmt = parsed[0][0]
-    if any(p[0] != fmt for p in parsed):
-        raise MergeError("Clips have different audio settings and cannot be merged.")
-    ch, width, rate = fmt
-    silence = b"\x00" * (int(rate * pause_s) * ch * width)
-
-    out = io.BytesIO()
-    with wave.open(out, "wb") as w:
-        w.setnchannels(ch)
-        w.setsampwidth(width)
-        w.setframerate(rate)
-        for i, (_, pcm) in enumerate(parsed):
-            if i and silence:
-                w.writeframes(silence)
-            w.writeframes(pcm)
-    return out.getvalue()
-
-
 # =============================================================== MP3
 
 _BITRATES = {  # Layer III only, kbps
@@ -131,25 +111,6 @@ def _silent_frame(template: bytes) -> bytes:
     h[2] &= ~0x02 & 0xFF  # no padding
     info = _parse_header(bytes(h))
     return bytes(h) + b"\x00" * (info["size"] - 4)
-
-
-def merge_mp3(clips: list[bytes], pause_s: float) -> bytes:
-    all_frames = [_mp3_frames(c) for c in clips]
-    if any(not f for f in all_frames):
-        raise MergeError("One of the clips is not a valid MP3 file.")
-    first = _parse_header(all_frames[0][0])
-    if any(_parse_header(f[0])["key"] != first["key"] for f in all_frames):
-        raise MergeError("Clips have different audio settings and cannot be merged.")
-
-    silent = _silent_frame(all_frames[0][0])
-    n_silent = round(pause_s * first["rate"] / first["samples"])
-    out = bytearray()
-    for i, frames in enumerate(all_frames):
-        if i:
-            out += silent * n_silent
-        for fr in frames:
-            out += fr
-    return bytes(out)
 
 
 # =============================================================== duration & silence
@@ -233,12 +194,49 @@ def pad_to_length(data: bytes, fmt: str, target_s: float, lead_s: float) -> byte
     return clip.build(lead, total - lead - clip.units)
 
 
+def join(clips: list[bytes], fmt: str, gaps: list[float],
+         lead_s: float = 0.0, trail_s: float = 0.0) -> bytes:
+    """Join clips with gaps[i] seconds of silence between clip i and clip i+1,
+    plus optional silence at the start and end."""
+    if not clips:
+        raise MergeError("There are no clips to join.")
+    parsed = [_Clip(c, fmt) for c in clips]
+    first = parsed[0]
+    to_units = lambda s: round(max(0.0, min(float(s), 600.0)) / first.unit)
+    if len(parsed) == 1:
+        return first.build(to_units(lead_s), to_units(trail_s))
+
+    silences = [to_units(lead_s)] + [to_units(g) for g in gaps[: len(parsed) - 1]]
+    silences += [0] * (len(parsed) - len(silences)) + [to_units(trail_s)]
+
+    if first.fmt == "WAV":
+        if any(c.wav_fmt != first.wav_fmt for c in parsed):
+            raise MergeError("Clips have different audio settings and cannot be merged.")
+        ch, width, rate = first.wav_fmt
+        zero = b"\x00" * (ch * width)
+        pcm = b"".join(zero * silences[i] + c.pcm for i, c in enumerate(parsed)) + zero * silences[-1]
+        out = io.BytesIO()
+        with wave.open(out, "wb") as w:
+            w.setnchannels(ch)
+            w.setsampwidth(width)
+            w.setframerate(rate)
+            w.writeframes(pcm)
+        return out.getvalue()
+
+    key = _parse_header(first.frames[0])["key"]
+    if any(_parse_header(c.frames[0])["key"] != key for c in parsed):
+        raise MergeError("Clips have different audio settings and cannot be merged.")
+    silent = _silent_frame(first.frames[0])
+    out = bytearray()
+    for i, c in enumerate(parsed):
+        out += silent * silences[i]
+        out += b"".join(c.frames)
+    out += silent * silences[-1]
+    return bytes(out)
+
+
 def merge(clips: list[bytes], fmt: str, pause_s: float = 0.5) -> bytes:
     if not clips:
         raise MergeError("There are no clips to merge.")
     pause_s = max(0.0, min(float(pause_s), 10.0))
-    if fmt.upper() == "WAV":
-        return merge_wav(clips, pause_s)
-    if fmt.upper() == "MP3":
-        return merge_mp3(clips, pause_s)
-    raise MergeError(f"Merging {fmt} files is not supported.")
+    return join(clips, fmt, [pause_s] * (len(clips) - 1))

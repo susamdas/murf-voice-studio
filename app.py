@@ -266,12 +266,25 @@ def api_generate():
 
     fmt = profile.get("format", "MP3")
 
+    try:
+        segments, lead, gaps, trail = autofit.split_pauses(text)
+    except MurfError as exc:
+        return fail(str(exc))
+    if not segments:
+        return fail("The line is empty (it only has [pause] tags).")
+
     def synth(r: int, p: int) -> bytes:
-        return murf_client.synthesize(text, {**profile, "rate": r, "pitch": p})
+        # One Murf call per part; the [pause] silences are added here, exactly.
+        settings = {**profile, "rate": r, "pitch": p}
+        clips = [murf_client.synthesize(seg, settings) for seg in segments]
+        if len(clips) == 1 and not lead and not trail:
+            return clips[0]
+        return audio_tools.join(clips, fmt, gaps, lead, trail)
 
     try:
         result = autofit.generate_line(synth, fmt, rate, pitch, target=target,
-                                       auto_fit=bool(data.get("auto_fit")), before=before, after=after)
+                                       auto_fit=bool(data.get("auto_fit")), before=before, after=after,
+                                       fixed=lead + sum(gaps) + trail)
     except (MurfError, audio_tools.MergeError) as exc:
         log_history(project, profile_name, file_name, text, f"error: {exc}")
         return fail(str(exc), 502)

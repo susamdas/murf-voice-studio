@@ -132,10 +132,14 @@ shot2 | 5 | গ্রামীণ ব্যাংক এল আমার দো�
 Format:  name | seconds | text   (name and seconds are optional)
   shot1 | text          → file shot1, no target length
   shot1 | 4.5 | text    → file shot1, target 4.5 seconds
-  text                  → file line01, line02, …"></textarea>
+  text                  → file line01, line02, …
+  এটা... [pause 1.5] বাবার ক্রিস্টাল!   → 1.5 seconds of silence in the middle"></textarea>
     <div class="toolbar">
       <button id="sampleBtn" class="small">Insert sample script</button>
+      <button id="pauseBtn" class="small" title="Insert a pause at the cursor">+ Insert [pause 1]</button>
       <span class="muted" id="lineCount"></span>
+      <span class="spacer"></span>
+      <span class="muted">Dramatic pause inside a line: <code>[pause 1.5]</code> (seconds, max 10). Each part uses one Murf generation.</span>
     </div>
   </section>
 
@@ -583,6 +587,13 @@ $("script").addEventListener("input", () => { renderLines(); store.set("script",
 $("project").addEventListener("change", () => store.set("project", $("project").value));
 $("autoFit").addEventListener("change", () => store.set("autoFit", $("autoFit").checked ? "1" : "0"));
 $("sampleBtn").onclick = () => { $("script").value = SAMPLE; $("script").dispatchEvent(new Event("input")); };
+$("pauseBtn").onclick = () => {
+  const ta = $("script"), tag = " [pause 1] ";
+  const at = ta.selectionStart ?? ta.value.length;
+  ta.value = ta.value.slice(0, at) + tag + ta.value.slice(ta.selectionEnd ?? at);
+  ta.focus(); ta.selectionStart = ta.selectionEnd = at + tag.length;
+  ta.dispatchEvent(new Event("input"));
+};
 $("profileSelect").onchange = onProfileChange;
 $("openFolderBtn").onclick = async () => {
   try { await api("POST", "/api/open-folder", { project: project() }); }
