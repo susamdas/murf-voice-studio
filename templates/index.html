@@ -137,6 +137,16 @@ Format:  name | seconds | text   (name and seconds are optional)
     <div class="toolbar">
       <button id="sampleBtn" class="small">Insert sample script</button>
       <button id="pauseBtn" class="small" title="Insert a pause at the cursor">+ Insert [pause 1]</button>
+      <select id="tagSelect" class="small" title="ElevenLabs emotion tags (Murf ignores them)" style="padding:4px 8px;font-size:13px">
+        <option value="">+ Emotion tag (ElevenLabs)…</option>
+        <optgroup label="Emotion"><option>[sad]</option><option>[crying]</option><option>[scared]</option><option>[angry]</option>
+          <option>[happy]</option><option>[excited]</option><option>[surprised]</option><option>[thoughtful]</option></optgroup>
+        <optgroup label="Delivery"><option>[whispers]</option><option>[shouts]</option><option>[low, gravelly voice]</option>
+          <option>[mysterious]</option><option>[dramatic]</option></optgroup>
+        <optgroup label="Sounds"><option>[gasps]</option><option>[sighs]</option><option>[laughs]</option><option>[inhales deeply]</option>
+          <option>[gulps]</option></optgroup>
+        <optgroup label="Pauses (ElevenLabs)"><option>[short pause]</option><option>[long pause]</option></optgroup>
+      </select>
       <span class="muted" id="lineCount"></span>
       <span class="spacer"></span>
       <span class="muted">Dramatic pause inside a line: <code>[pause 1.5]</code> (seconds, max 10). Each part uses one Murf generation.</span>
@@ -225,40 +235,49 @@ Format:  name | seconds | text   (name and seconds are optional)
         <label class="field wide">Profile name (shown in the dropdown)
           <input type="text" data-f="name">
         </label>
+        <label class="field">Engine (your choice)
+          <select data-f="engine"><option value="murf">Murf</option><option value="elevenlabs">ElevenLabs (emotion tags)</option></select>
+        </label>
         <label class="field">API key name
           <select data-f="api_key_name"></select>
         </label>
-        <label class="field">Murf voice ID
+        <label class="field"><span id="pmVoiceLabel">Murf voice ID</span>
           <input type="text" data-f="voice_id" placeholder="e.g. Anisha">
         </label>
-        <label class="field">Locale
+        <label class="field">Locale / language
           <input type="text" data-f="locale" placeholder="e.g. bn-IN" list="localeList">
         </label>
-        <label class="field">Style
+        <label class="field only-murf">Style
           <input type="text" data-f="style" placeholder="e.g. Conversational" list="styleList">
         </label>
+        <label class="field only-eleven" title="Lower = more emotional range, higher = steadier">Stability (emotion range)
+          <select data-f="stability">
+            <option value="0">Creative — most emotional</option>
+            <option value="0.5">Natural — balanced</option>
+            <option value="1">Robust — steady, less emotion</option>
+          </select>
+        </label>
         <label class="field">Model
-          <input type="text" data-f="model" placeholder="falcon-2.1">
+          <input type="text" data-f="model" placeholder="falcon-2.1" list="modelList">
         </label>
         <label class="field">Format
           <select data-f="format"><option>MP3</option><option>WAV</option></select>
         </label>
         <label class="field">Sample rate
-          <select data-f="sample_rate">
-            <option>8000</option><option>16000</option><option selected>24000</option><option>44100</option><option>48000</option>
-          </select>
+          <select data-f="sample_rate"></select>
         </label>
-        <span></span>
         <label class="field"><span>Default speed: <span id="pmRateVal">0</span></span>
           <input type="range" data-f="rate" min="-50" max="50" step="1" value="0">
         </label>
-        <label class="field"><span>Default pitch: <span id="pmPitchVal">0</span></span>
+        <label class="field only-murf"><span>Default pitch: <span id="pmPitchVal">0</span></span>
           <input type="range" data-f="pitch" min="-50" max="50" step="1" value="0">
         </label>
+        <div class="wide muted only-eleven">ElevenLabs has no pitch setting. Speed −30…+20 = ElevenLabs speed 0.7…1.2.
+          Emotion comes from tags in your script, e.g. <code>[whispers]</code>, <code>[sad]</code>, <code>[crying]</code>.</div>
         <div class="murf-box">
           <div class="row">
             <button class="small" id="loadVoicesBtn">⬇ Load voices from Murf</button>
-            <span class="muted">Uses the API key selected above. Pick a voice to fill voice ID, locale and style.</span>
+            <span class="muted" id="loadVoicesHelp">Uses the API key selected above. Pick a voice to fill voice ID, locale and style.</span>
           </div>
           <div class="row" id="murfPicker" style="display:none">
             <label class="field">Filter
@@ -271,6 +290,7 @@ Format:  name | seconds | text   (name and seconds are optional)
         </div>
         <datalist id="localeList"></datalist>
         <datalist id="styleList"><option>Conversational</option></datalist>
+        <datalist id="modelList"></datalist>
         <div class="wide" id="pmNotice"></div>
       </div>
     </div>
@@ -294,7 +314,8 @@ shot5 | 4 | গ্রামীণ ব্যাংক — সবার জন্�
 
 const $ = (id) => document.getElementById(id);
 let profiles = [];
-let keyNames = [];
+let keyNames = [];                       // Murf key names (kept for older code paths)
+let keysByEngine = { murf: [], elevenlabs: [] };
 let busy = false;
 let CFG = { rate_min: -50, rate_max: 50, pitch_min: -50, pitch_max: 50,
             natural_rate_min: -20, natural_rate_max: 20, max_tries: 3, default_lead: 0.5 };
@@ -341,25 +362,30 @@ const currentProfile = () => profiles.find(p => p.name === $("profileSelect").va
 const sec = (v) => (v == null || v === "" ? "—" : `${Number(v).toFixed(1)} sec`);
 const signed = (v) => (v > 0 ? "+" + v : String(v));
 const saveOverrides = () => store.set("overrides", JSON.stringify(overrides));
+const engineOf = (p) => (p && p.engine) || "murf";
+const DEFAULT_ENG = { murf: { label: "Murf", rate_min: -50, rate_max: 50, pitch: true,
+                              sample_rates: [8000, 16000, 24000, 44100, 48000], model: "falcon-2.1" },
+                      elevenlabs: { label: "ElevenLabs", rate_min: -30, rate_max: 20, pitch: false,
+                                    sample_rates: [16000, 22050, 24000, 44100], model: "eleven_v3" } };
+const ENG = (e) => (CFG.engines || DEFAULT_ENG)[e] || DEFAULT_ENG.murf;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // ------------------------------------------------------------ profiles & keys
 async function loadSettings() {
   try {
     const [k, p, c] = await Promise.all([api("GET", "/api/keys"), api("GET", "/api/profiles"), api("GET", "/api/config")]);
-    keyNames = k.keys; profiles = p.profiles; CFG = c;
+    keysByEngine = k.by_engine || { murf: k.keys, elevenlabs: [] };
+    keyNames = keysByEngine.murf || []; profiles = p.profiles; CFG = c;
   } catch (e) { showNotice("settingsNotice", e.message, "error"); return; }
-  for (const f of ["rate", "pitch"]) {
-    const el = $("pmForm").querySelector(`[data-f="${f}"]`);
-    el.min = CFG[f + "_min"]; el.max = CFG[f + "_max"];
-  }
   $("autoFitHelp").textContent = `Auto-fit: lines with a target (name | seconds | text) are regenerated up to ${CFG.max_tries} times ` +
     `with speed between ${signed(CFG.natural_rate_min)} and ${signed(CFG.natural_rate_max)}, then padded with silence ` +
-    `(${CFG.default_lead} s at the start, the rest at the end). Each try uses Murf credits.`;
+    `(${CFG.default_lead} s at the start, the rest at the end). Each try uses credits (Murf or ElevenLabs).`;
   fillProfileSelect();
 }
 function fillProfileSelect(selectName) {
   const sel = $("profileSelect"), prev = selectName || sel.value || store.get("profile");
-  sel.replaceChildren(...profiles.map(p => h("option", { value: p.name }, p.name)));
+  sel.replaceChildren(...profiles.map(p => h("option", { value: p.name },
+    engineOf(p) === "elevenlabs" ? `${p.name}  · ElevenLabs` : p.name)));
   if (profiles.some(p => p.name === prev)) sel.value = prev;
   renderCompareSelects();
   onProfileChange();
@@ -372,13 +398,20 @@ function onProfileChange() {
   if (!profiles.length) {
     showNotice("settingsNotice", "No voice profiles yet. Click “Manage voice profiles” to add one.", "warn");
   } else if (p) {
-    s.append("Voice ", h("b", {}, p.voice_id), " · locale ", h("b", {}, p.locale || "default"),
-             " · style ", h("b", {}, p.style || "default"), " · speed ", h("b", {}, signed(p.rate || 0)),
-             " · pitch ", h("b", {}, signed(p.pitch || 0)), " · ", h("b", {}, p.format), " ",
+    const eng = engineOf(p), E = ENG(eng), keys = keysByEngine[eng] || [];
+    const prefix = eng === "elevenlabs" ? "ELEVEN_KEY_" : "MURF_KEY_";
+    s.append("Engine ", h("b", {}, E.label), " · voice ", h("b", {}, p.voice_id),
+             " · locale ", h("b", {}, p.locale || "default"),
+             eng === "elevenlabs" ? [" · model ", h("b", {}, p.model), " · stability ", h("b", {}, String(p.stability ?? 0.5))]
+                                  : [" · style ", h("b", {}, p.style || "default"), " · pitch ", h("b", {}, signed(p.pitch || 0))],
+             " · speed ", h("b", {}, signed(p.rate || 0)), " · ", h("b", {}, p.format), " ",
              h("b", {}, p.sample_rate + " Hz"), " · API key ", h("b", {}, p.api_key_name || "—"));
-    if (!keyNames.includes(p.api_key_name))
-      showNotice("settingsNotice", `API key “${p.api_key_name || "(none)"}” is not in your .env file. ` +
-        (keyNames.length ? `Available keys: ${keyNames.join(", ")}.` : "Add a line like MURF_KEY_MAIN=your_key to .env and restart the app."), "warn");
+    if (eng === "elevenlabs")
+      s.append(h("div", {}, "Emotion tags work here: ", h("code", {}, "[whispers]"), " ", h("code", {}, "[sad]"), " ",
+                         h("code", {}, "[crying]"), " ", h("code", {}, "[gasps]"), " … use the “+ Emotion tag” button in step 2."));
+    if (!keys.includes(p.api_key_name))
+      showNotice("settingsNotice", `${E.label} API key “${p.api_key_name || "(none)"}” is not in your .env file. ` +
+        (keys.length ? `Available ${E.label} keys: ${keys.join(", ")}.` : `Add a line like ${prefix}MAIN=your_key to .env and restart the app.`), "warn");
   }
   renderLines();
 }
@@ -419,10 +452,14 @@ function slider(line, field) {
   const p = currentProfile() || {};
   const o = ov(line);
   const label = field === "rate" ? "Speed" : "Pitch";
+  const E = ENG(engineOf(p));
+  if (field === "pitch" && !E.pitch)
+    return h("span", { class: "slider" }, h("span", { class: "val inherit" }, `Pitch: n/a (${E.label})`));
+  const lo = field === "rate" ? E.rate_min : CFG.pitch_min, hi = field === "rate" ? E.rate_max : CFG.pitch_max;
   const has = o[field] != null;
-  const value = has ? o[field] : (p[field] || 0);
+  const value = clamp(has ? o[field] : (p[field] || 0), lo, hi);
   const val = h("span", { class: "val" + (has ? "" : " inherit") }, `${label}: ${signed(value)}${has ? "" : " (profile)"}`);
-  const input = h("input", { type: "range", min: CFG[field + "_min"], max: CFG[field + "_max"], step: 1, value,
+  const input = h("input", { type: "range", min: lo, max: hi, step: 1, value,
                              disabled: busy, "aria-label": `${label} for ${line.name}` });
   input.addEventListener("input", () => { val.textContent = `${label}: ${signed(+input.value)}`; val.classList.remove("inherit"); });
   input.addEventListener("change", () => { o[field] = +input.value; saveOverrides(); renderLines(); });
@@ -516,7 +553,8 @@ async function generateOne(line) {
   try {
     const r = await api("POST", "/api/generate", {
       project: project(), profile: p.name, file_name: line.name, text: line.text,
-      rate: o.rate ?? null, pitch: o.pitch ?? null, target: line.target,
+      rate: o.rate == null ? null : clamp(o.rate, ENG(engineOf(p)).rate_min, ENG(engineOf(p)).rate_max),
+      pitch: ENG(engineOf(p)).pitch ? (o.pitch ?? null) : null, target: line.target,
       silence_before: o.before ?? null, silence_after: o.after ?? null, auto_fit: $("autoFit").checked });
     Object.assign(st, { status: "done", previewId: r.preview_id, url: r.url + "?t=" + Date.now(), result: r });
     if ($("autoSave").checked) await saveOne(line);
@@ -594,6 +632,15 @@ $("pauseBtn").onclick = () => {
   ta.focus(); ta.selectionStart = ta.selectionEnd = at + tag.length;
   ta.dispatchEvent(new Event("input"));
 };
+$("tagSelect").onchange = (e) => {
+  const tag = e.target.value; e.target.value = "";
+  if (!tag) return;
+  const ta = $("script"), at = ta.selectionStart ?? ta.value.length, ins = tag + " ";
+  ta.value = ta.value.slice(0, at) + ins + ta.value.slice(ta.selectionEnd ?? at);
+  ta.focus(); ta.selectionStart = ta.selectionEnd = at + ins.length;
+  ta.dispatchEvent(new Event("input"));
+  if (engineOf(currentProfile()) !== "elevenlabs") toast("Note: emotion tags only work with ElevenLabs profiles. Murf ignores them.", 5000);
+};
 $("profileSelect").onchange = onProfileChange;
 $("openFolderBtn").onclick = async () => {
   try { await api("POST", "/api/open-folder", { project: project() }); }
@@ -656,34 +703,55 @@ async function refreshHistory() {
 $("historyDetails").addEventListener("toggle", refreshHistory);
 
 // ------------------------------------------------------------ profile manager
-let draft = [], sel = 0, murfVoices = [];
-const BLANK = { name: "New profile", voice_id: "", style: "Conversational", locale: "", model: "falcon-2.1",
-                api_key_name: "", format: "MP3", sample_rate: 24000, rate: 0, pitch: 0 };
-const NUMERIC = new Set(["sample_rate", "rate", "pitch"]);
+let draft = [], sel = 0, loadedVoices = [], loadedEngine = "murf";
+const BLANK = { name: "New profile", engine: "murf", voice_id: "", style: "Conversational", locale: "", model: "falcon-2.1",
+                api_key_name: "", format: "MP3", sample_rate: 24000, rate: 0, pitch: 0, stability: 0.5 };
+const NUMERIC = new Set(["sample_rate", "rate", "pitch", "stability"]);
 const fields = () => [...$("pmForm").querySelectorAll("[data-f]")];
+const fld = (n) => $("pmForm").querySelector(`[data-f="${n}"]`);
 
 function openManager() {
-  draft = profiles.map(p => ({ ...p }));
+  draft = profiles.map(p => ({ engine: "murf", stability: 0.5, ...p }));
   sel = Math.max(0, profiles.findIndex(p => p.name === $("profileSelect").value));
   if (!draft.length) { draft.push({ ...BLANK, api_key_name: keyNames[0] || "" }); sel = 0; }
   $("pmNotice").replaceChildren();
+  $("murfPicker").style.display = "none";
   $("modal").classList.add("open");
   renderManager();
 }
 function updateSliderLabels() {
-  const f = (n) => $("pmForm").querySelector(`[data-f="${n}"]`);
-  $("pmRateVal").textContent = signed(+f("rate").value);
-  $("pmPitchVal").textContent = signed(+f("pitch").value);
+  $("pmRateVal").textContent = signed(+fld("rate").value);
+  $("pmPitchVal").textContent = signed(+fld("pitch").value);
+}
+function applyEngineUi(p) {
+  const eng = engineOf(p), E = ENG(eng), eleven = eng === "elevenlabs";
+  $("pmForm").querySelectorAll(".only-murf").forEach(el => el.style.display = eleven ? "none" : "");
+  $("pmForm").querySelectorAll(".only-eleven").forEach(el => el.style.display = eleven ? "" : "none");
+  $("pmVoiceLabel").textContent = eleven ? "ElevenLabs voice ID" : "Murf voice ID";
+  fld("voice_id").placeholder = eleven ? "e.g. 21m00Tcm4TlvDq8ikWAM" : "e.g. Anisha";
+  fld("locale").placeholder = eleven ? "e.g. bn (optional)" : "e.g. bn-IN";
+  fld("model").placeholder = E.model;
+  $("modelList").replaceChildren(...(eleven ? (CFG.eleven_models || ["eleven_v3", "eleven_v4"]) : ["falcon-2.1"])
+    .map(m => h("option", {}, m)));
+  fld("rate").min = E.rate_min; fld("rate").max = E.rate_max;
+  fld("sample_rate").replaceChildren(...E.sample_rates.map(r => h("option", { value: r }, String(r))));
+  $("loadVoicesBtn").textContent = `⬇ Load voices from ${E.label}`;
+  $("loadVoicesHelp").textContent = eleven
+    ? "Lists the voices in your ElevenLabs “My Voices”. Add Bangla voices there first from the Voice Library."
+    : "Uses the API key selected above. Pick a voice to fill voice ID, locale and style.";
+  const keySel = fld("api_key_name"), keys = keysByEngine[eng] || [];
+  const opts = [...new Set([...keys, p.api_key_name].filter(Boolean))];
+  keySel.replaceChildren(...opts.map(k => h("option", { value: k }, keys.includes(k) ? k : `${k} (not in .env)`)));
+  if (!opts.length) keySel.append(h("option", { value: "" }, `No ${E.label} keys in .env`));
 }
 function renderManager() {
   $("pmList").replaceChildren(...draft.map((p, i) =>
-    h("div", { class: i === sel ? "active" : "", onclick: () => { readForm(); sel = i; renderManager(); } }, p.name || "(no name)")));
+    h("div", { class: i === sel ? "active" : "", onclick: () => { readForm(); sel = i; $("murfPicker").style.display = "none"; renderManager(); } },
+      p.name || "(no name)", engineOf(p) === "elevenlabs" ? h("span", { class: "muted" }, " · ElevenLabs") : null)));
   const p = draft[sel] || {};
-  const keySel = $("pmForm").querySelector('[data-f="api_key_name"]');
-  const opts = [...new Set([...keyNames, p.api_key_name].filter(Boolean))];
-  keySel.replaceChildren(...opts.map(k => h("option", { value: k }, keyNames.includes(k) ? k : `${k} (not in .env)`)));
-  if (!opts.length) keySel.append(h("option", { value: "" }, "No keys in .env"));
+  applyEngineUi(p);
   fields().forEach(el => { el.value = p[el.dataset.f] ?? (NUMERIC.has(el.dataset.f) ? 0 : ""); });
+  if (fld("stability").value === "") fld("stability").value = "0.5";
   updateSliderLabels();
   $("pmDel").disabled = !draft.length; $("pmDup").disabled = !draft.length;
   fields().forEach(el => el.disabled = !draft.length);
@@ -694,7 +762,22 @@ function readForm() {
 }
 $("pmForm").addEventListener("input", (e) => {
   if (e.target.type === "range") updateSliderLabels();
-  if (e.target.dataset.f === "name") { readForm(); $("pmList").children[sel].textContent = draft[sel].name || "(no name)"; }
+  if (e.target.dataset.f === "name") { readForm(); $("pmList").children[sel].firstChild.textContent = draft[sel].name || "(no name)"; }
+});
+fld("engine").addEventListener("change", () => {
+  // switching engine: move settings to sensible defaults for that engine
+  const p = draft[sel], to = fld("engine").value, E = ENG(to);
+  readForm();
+  p.engine = to;
+  p.model = E.model;
+  p.api_key_name = (keysByEngine[to] || [])[0] || "";
+  p.rate = clamp(p.rate || 0, E.rate_min, E.rate_max);
+  if (!E.sample_rates.includes(p.sample_rate)) p.sample_rate = E.sample_rates.includes(24000) ? 24000 : E.sample_rates[0];
+  if (to === "elevenlabs") { p.pitch = 0; p.stability = p.stability ?? 0.5; p.voice_id = ""; p.locale = "bn"; }
+  else { p.voice_id = ""; p.locale = "bn-IN"; p.style = "Conversational"; }
+  $("murfPicker").style.display = "none";
+  renderManager();
+  showNotice("pmNotice", `Engine changed to ${E.label}. Choose a ${E.label} voice ID (use “Load voices”).`, "warn");
 });
 $("pmAdd").onclick = () => { readForm(); draft.push({ ...BLANK, api_key_name: keyNames[0] || "" }); sel = draft.length - 1; renderManager(); };
 $("pmDup").onclick = () => {
@@ -723,29 +806,41 @@ $("pmSave").onclick = async () => {
   } catch (e) { showNotice("pmNotice", e.message, "error"); }
 };
 
-// Load voices from Murf
+// Load voices from Murf or ElevenLabs (whichever engine this profile uses)
 $("loadVoicesBtn").onclick = async () => {
   readForm();
-  const key = draft[sel]?.api_key_name;
-  if (!key) return showNotice("pmNotice", "Choose an API key name first.", "warn");
+  const p = draft[sel] || {}, eng = engineOf(p), E = ENG(eng);
+  if (!p.api_key_name) return showNotice("pmNotice", "Choose an API key name first.", "warn");
   const btn = $("loadVoicesBtn"); btn.disabled = true; btn.textContent = "Loading…";
   try {
-    const r = await api("GET", `/api/murf-voices?key=${encodeURIComponent(key)}&model=${encodeURIComponent(draft[sel].model || "falcon-2.1")}`);
-    murfVoices = r.voices;
+    const r = await api("GET", `/api/voices?engine=${eng}&key=${encodeURIComponent(p.api_key_name)}` +
+                               `&model=${encodeURIComponent(p.model || E.model)}`);
+    loadedVoices = r.voices; loadedEngine = eng;
     $("murfPicker").style.display = "";
     $("pmNotice").replaceChildren();
+    $("voiceFilter").placeholder = eng === "elevenlabs" ? "name, accent, e.g. bengali" : "name or locale, e.g. bn";
     renderVoiceOptions();
-    toast(`Loaded ${murfVoices.length} voices from Murf.`);
+    toast(`Loaded ${loadedVoices.length} voices from ${E.label}.`);
   } catch (e) { showNotice("pmNotice", e.message, "error"); }
-  btn.disabled = false; btn.textContent = "⬇ Load voices from Murf";
+  btn.disabled = false; btn.textContent = `⬇ Load voices from ${E.label}`;
 };
 function renderVoiceOptions() {
   const q = $("voiceFilter").value.trim().toLowerCase();
   const opts = [];
-  for (const v of murfVoices) for (const [loc, d] of Object.entries(v.locales)) {
-    const label = `${v.display_name} — ${d.detail} (${loc})${v.description ? " · " + v.description : ""}`;
-    if (q && !label.toLowerCase().includes(q) && !v.voice_id.toLowerCase().includes(q)) continue;
-    opts.push(h("option", { value: JSON.stringify({ id: v.voice_id, loc, styles: d.styles }) }, label));
+  for (const v of loadedVoices) {
+    if (loadedEngine === "elevenlabs") {
+      const bits = [v.gender, v.age, v.accent].filter(Boolean).join(", ");
+      const label = `${v.display_name}${bits ? " — " + bits : ""}${v.languages.length ? " · " + v.languages.join("/") : ""}` +
+                    `${v.description ? " · " + v.description : ""} (${v.category})`;
+      if (q && !label.toLowerCase().includes(q) && !v.voice_id.toLowerCase().includes(q)) continue;
+      opts.push(h("option", { value: JSON.stringify({ id: v.voice_id }) }, label));
+      continue;
+    }
+    for (const [loc, d] of Object.entries(v.locales)) {
+      const label = `${v.display_name} — ${d.detail} (${loc})${v.description ? " · " + v.description : ""}`;
+      if (q && !label.toLowerCase().includes(q) && !v.voice_id.toLowerCase().includes(q)) continue;
+      opts.push(h("option", { value: JSON.stringify({ id: v.voice_id, loc, styles: d.styles }) }, label));
+    }
   }
   $("murfVoiceSelect").replaceChildren(h("option", { value: "" }, opts.length ? `— choose a voice (${opts.length}) —` : "No voices match"), ...opts);
 }
@@ -753,11 +848,12 @@ $("voiceFilter").addEventListener("input", renderVoiceOptions);
 $("murfVoiceSelect").onchange = (e) => {
   if (!e.target.value) return;
   const { id, loc, styles } = JSON.parse(e.target.value);
-  const f = (name) => $("pmForm").querySelector(`[data-f="${name}"]`);
-  f("voice_id").value = id;
-  f("locale").value = loc;
-  $("styleList").replaceChildren(...styles.map(s => h("option", {}, s)));
-  if (styles.length && !styles.includes(f("style").value)) f("style").value = styles[0];
+  fld("voice_id").value = id;
+  if (loc) fld("locale").value = loc;
+  if (styles) {
+    $("styleList").replaceChildren(...styles.map(st => h("option", {}, st)));
+    if (styles.length && !styles.includes(fld("style").value)) fld("style").value = styles[0];
+  }
   readForm();
 };
 $("manageBtn").onclick = openManager;

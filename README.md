@@ -98,6 +98,38 @@ For Bangla, Murf's Falcon model has only three voices: **Debarati**, **Subhankar
 These are starting points, so adjust them by ear. If a voice sounds robotic, move its pitch closer to 0.
 For horror or thriller ads, combine a Horror profile with `[pause]` tags, short broken sentences, and background music and sound effects in Canva. You can also add reverb and echo in Audacity, which is free.
 
+### Real emotion with ElevenLabs (optional, your choice per profile)
+Each voice profile has an **Engine**: **Murf** or **ElevenLabs**. You choose it yourself in **Manage voice profiles**; the app never switches on its own.
+
+**Setup**
+1. In ElevenLabs, open **Profile → API Keys → Create API key** and turn on these permissions:
+   - **Text to Speech:** Access (required)
+   - **Voices:** Read (for the **Load voices** button)
+2. Add the key to `.env`: `ELEVEN_KEY_MAIN=your_key`
+3. Optional: find Bangla voices in the ElevenLabs **Voice Library** (filter by Language: Bengali), click **Add to My Voices**, then in the app use **Load voices from ElevenLabs**.
+
+**Emotion tags.** With ElevenLabs profiles (model `eleven_v3` or `eleven_v4`), put tags in the script:
+```
+h1 | [whispers] অন্ধকার ঘর... [scared] কেউ নেই।
+h2 | [gasps] এটা... [pause 1.5] [crying] বাবার ক্রিস্টাল!
+s1 | [sad] মা চলে যাওয়ার পর, এই বাড়িটা আর আগের মতো নেই।
+```
+- Useful tags: `[sad]` `[crying]` `[scared]` `[angry]` `[happy]` `[excited]` `[whispers]` `[shouts]` `[gasps]` `[sighs]` `[laughs]` `[short pause]` `[long pause]`. The **+ Emotion tag** menu in step 2 inserts them.
+- Set **Stability** to **Creative** for the strongest emotion, or **Natural** or **Robust** for a steadier voice.
+- Results vary between generations, so generate 2–3 times and keep the best one.
+- `[pause X]` from this app also works with ElevenLabs. The app passes the surrounding text along, so the delivery stays natural.
+
+**Differences from Murf**
+
+| | Murf | ElevenLabs |
+|---|---|---|
+| Emotion tags | Removed automatically (a note is shown) | ✅ Acted out |
+| Speed | −50 to +50 | −30 to +20 (ElevenLabs speed 0.7 to 1.2) |
+| Pitch | −50 to +50 | Not available |
+| Sample rate | 8000–48000 | 16000, 22050, 24000, 44100 |
+
+**Merging:** you can only merge lines with the same audio settings. A Murf 24000 Hz MP3 and an ElevenLabs 44100 Hz MP3 can't be merged together, so set the ElevenLabs profile to 24000 Hz if you want to mix them.
+
 ### Silence before / after
 Each line has **Silence before** and **Silence after** boxes, in seconds:
 - With Auto-fit **off**, this silence is simply added to the start and end of the file.
@@ -126,6 +158,8 @@ Every generate, save and error is written to `history.csv`, which opens in Excel
 | *Invalid API key* | The key in `.env` is wrong or expired. Copy it again from your Murf account. |
 | *Out of credits* | Top up the Murf account, or switch to a profile that uses another key. |
 | *Voice not available with these settings* | The voice, locale or style don't go together. Use **Load voices from Murf** to pick a valid set. |
+| *ElevenLabs API key … is not allowed to do this* | The key is missing a permission. In ElevenLabs, open **Profile → API Keys**, edit the key and turn on **Text to Speech** (and **Voices: Read**). |
+| *Emotion tags … only work with ElevenLabs profiles* | You used `[whispers]` and similar tags with a Murf profile. Murf removes them; switch to an ElevenLabs profile for emotion. |
 | *Line too long for X sec* | Even at the fastest natural speed the line doesn't fit. Shorten the text, make the video clip longer, or set a faster speed by hand. |
 | *Silence before/after leaves no room for speech* | The silence boxes add up to almost the whole target. Make them smaller. |
 | *Could not connect to Murf* | Check your internet connection. The app already tried twice. |
@@ -136,7 +170,9 @@ Every generate, save and error is written to `history.csv`, which opens in Excel
 | File | Purpose |
 |---|---|
 | `app.py` | The web app (Flask) |
-| `murf_client.py` | Talks to the Murf API. This is the only place that uses the key values. |
+| `murf_client.py` | Talks to the Murf API |
+| `elevenlabs_client.py` | Talks to the ElevenLabs API (emotion tags) |
+| `keystore.py` | Reads API keys from `.env`. This is the only place that handles key values. |
 | `audio_tools.py` | Measures audio length, adds silence and merges clips (no extra software needed) |
 | `autofit.py` | Fits a line to its target length (speed tries, silence) and reads `[pause]` tags |
 | `voices.json` | Your voice profiles |

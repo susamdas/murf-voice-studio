@@ -1,6 +1,7 @@
 [
   {
     "name": "Rina – Bangla female",
+    "engine": "murf",
     "voice_id": "Anisha",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -13,6 +14,7 @@
   },
   {
     "name": "Child – Bangla girl",
+    "engine": "murf",
     "voice_id": "Debarati",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -25,6 +27,7 @@
   },
   {
     "name": "Child – Bangla boy",
+    "engine": "murf",
     "voice_id": "Subhankar",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -37,6 +40,7 @@
   },
   {
     "name": "Teen – Bangla female",
+    "engine": "murf",
     "voice_id": "Anisha",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -49,6 +53,7 @@
   },
   {
     "name": "Teen – Bangla male",
+    "engine": "murf",
     "voice_id": "Subhankar",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -61,6 +66,7 @@
   },
   {
     "name": "Adult – Bangla woman",
+    "engine": "murf",
     "voice_id": "Debarati",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -73,6 +79,7 @@
   },
   {
     "name": "Adult – Bangla man",
+    "engine": "murf",
     "voice_id": "Subhankar",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -85,6 +92,7 @@
   },
   {
     "name": "Old – Bangla woman",
+    "engine": "murf",
     "voice_id": "Debarati",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -97,6 +105,7 @@
   },
   {
     "name": "Old – Bangla man",
+    "engine": "murf",
     "voice_id": "Subhankar",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -109,6 +118,7 @@
   },
   {
     "name": "Cartoon – Bangla squeaky",
+    "engine": "murf",
     "voice_id": "Debarati",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -121,6 +131,7 @@
   },
   {
     "name": "Cartoon – Bangla gruff",
+    "engine": "murf",
     "voice_id": "Subhankar",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -133,6 +144,7 @@
   },
   {
     "name": "Horror – deep narrator",
+    "engine": "murf",
     "voice_id": "Subhankar",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -145,6 +157,7 @@
   },
   {
     "name": "Horror – scared whisper",
+    "engine": "murf",
     "voice_id": "Debarati",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -157,6 +170,7 @@
   },
   {
     "name": "Horror – shock",
+    "engine": "murf",
     "voice_id": "Debarati",
     "style": "Conversational",
     "locale": "bn-IN",
@@ -166,5 +180,33 @@
     "sample_rate": 24000,
     "rate": 10,
     "pitch": 15
+  },
+  {
+    "name": "Horror – ElevenLabs male (George)",
+    "engine": "elevenlabs",
+    "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+    "style": "",
+    "locale": "bn",
+    "model": "eleven_v3",
+    "api_key_name": "MAIN",
+    "format": "MP3",
+    "sample_rate": 44100,
+    "rate": -10,
+    "pitch": 0,
+    "stability": 0.0
+  },
+  {
+    "name": "Drama – ElevenLabs female (Sarah)",
+    "engine": "elevenlabs",
+    "voice_id": "EXAVITQu4vr4xnSDxMaL",
+    "style": "",
+    "locale": "bn",
+    "model": "eleven_v3",
+    "api_key_name": "MAIN",
+    "format": "MP3",
+    "sample_rate": 44100,
+    "rate": 0,
+    "pitch": 0,
+    "stability": 0.0
   }
 ]

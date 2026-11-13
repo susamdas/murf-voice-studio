@@ -23,6 +23,8 @@ from flask import Flask, jsonify, render_template, request, send_file
 
 import audio_tools
 import autofit
+import elevenlabs_client
+import keystore
 import murf_client
 from murf_client import MurfError
 
@@ -39,6 +41,17 @@ PORT = int(os.environ.get("PORT", "5050"))
 FORMATS = ("MP3", "WAV")
 SAMPLE_RATES = (8000, 16000, 24000, 44100, 48000)
 DEFAULT_MODEL = "falcon-2.1"
+
+# Per-engine limits. The user picks the engine per voice profile.
+ENGINE_LIMITS = {
+    "murf": {"rate": (autofit.RATE_MIN, autofit.RATE_MAX), "pitch": True,
+             "sample_rates": SAMPLE_RATES, "model": DEFAULT_MODEL},
+    "elevenlabs": {"rate": (elevenlabs_client.RATE_MIN, elevenlabs_client.RATE_MAX), "pitch": False,
+                   "sample_rates": elevenlabs_client.SAMPLE_RATES, "model": elevenlabs_client.DEFAULT_MODEL},
+}
+# Emotion / delivery tags such as [whispers] or [sad]. ElevenLabs acts them out;
+# Murf would read them aloud, so they are removed for Murf profiles.
+EMOTION_TAG_RE = re.compile(r"\[[A-Za-z][A-Za-z ,'-]{0,40}\]")
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
@@ -115,29 +128,44 @@ def clean_profile(p: dict) -> dict:
         raise ValueError("Every profile needs a name.")
     if not voice_id:
         raise ValueError(f"Profile '{name}' needs a voice ID.")
+    engine = str(p.get("engine") or "murf").lower()
+    if engine not in ENGINE_LIMITS:
+        raise ValueError(f"Profile '{name}': engine must be Murf or ElevenLabs.")
+    lim = ENGINE_LIMITS[engine]
     fmt = str(p.get("format") or "MP3").upper()
     if fmt not in FORMATS:
         raise ValueError(f"Profile '{name}': format must be MP3 or WAV.")
     try:
-        rate = int(p.get("sample_rate") or 24000)
+        rate = int(p.get("sample_rate") or (24000 if engine == "murf" else 44100))
     except (TypeError, ValueError):
         rate = 0
-    if rate not in SAMPLE_RATES:
-        raise ValueError(f"Profile '{name}': sample rate must be one of {', '.join(map(str, SAMPLE_RATES))}.")
-    speed = _int_in_range(p.get("rate"), autofit.RATE_MIN, autofit.RATE_MAX, f"Profile '{name}': speed")
-    pitch = _int_in_range(p.get("pitch"), autofit.PITCH_MIN, autofit.PITCH_MAX, f"Profile '{name}': pitch")
-    return {
+    if rate not in lim["sample_rates"]:
+        raise ValueError(f"Profile '{name}': sample rate must be one of {', '.join(map(str, lim['sample_rates']))}.")
+    speed = _int_in_range(p.get("rate"), *lim["rate"], f"Profile '{name}': speed")
+    pitch = (_int_in_range(p.get("pitch"), autofit.PITCH_MIN, autofit.PITCH_MAX, f"Profile '{name}': pitch")
+             if lim["pitch"] else 0)
+    out = {
         "name": name,
+        "engine": engine,
         "voice_id": voice_id,
-        "style": str(p.get("style") or "").strip(),
+        "style": str(p.get("style") or "").strip() if engine == "murf" else "",
         "locale": str(p.get("locale") or "").strip(),
-        "model": str(p.get("model") or DEFAULT_MODEL).strip(),
+        "model": str(p.get("model") or lim["model"]).strip(),
         "api_key_name": str(p.get("api_key_name") or "").strip(),
         "format": fmt,
         "sample_rate": rate,
         "rate": speed,
         "pitch": pitch,
     }
+    if engine == "elevenlabs":
+        try:
+            stability = float(p.get("stability", 0.5))
+        except (TypeError, ValueError):
+            stability = -1
+        if not 0 <= stability <= 1:
+            raise ValueError(f"Profile '{name}': stability must be between 0 and 1.")
+        out["stability"] = stability
+    return out
 
 
 def _int_in_range(value, lo: int, hi: int, label: str) -> int:
@@ -193,7 +221,9 @@ def index():
 
 @app.get("/api/keys")
 def api_keys():
-    return ok(keys=murf_client.list_key_names())  # names only, never values
+    # names only, never values
+    return ok(keys=keystore.list_key_names("murf"),
+              by_engine={e: keystore.list_key_names(e) for e in keystore.ENGINES})
 
 
 @app.get("/api/profiles")
@@ -213,10 +243,14 @@ def api_put_profiles():
         return fail(str(exc))
 
 
+@app.get("/api/voices")
 @app.get("/api/murf-voices")
-def api_murf_voices():
+def api_voices():
     key_name = request.args.get("key", "")
+    engine = request.args.get("engine", "murf")
     try:
+        if engine == "elevenlabs":
+            return ok(voices=elevenlabs_client.list_voices(key_name))
         return ok(voices=murf_client.list_voices(key_name, request.args.get("model") or DEFAULT_MODEL))
     except MurfError as exc:
         return fail(str(exc), 502)
@@ -227,7 +261,12 @@ def api_config():
     return ok(rate_min=autofit.RATE_MIN, rate_max=autofit.RATE_MAX,
               pitch_min=autofit.PITCH_MIN, pitch_max=autofit.PITCH_MAX,
               natural_rate_min=autofit.NATURAL_RATE_MIN, natural_rate_max=autofit.NATURAL_RATE_MAX,
-              max_tries=autofit.MAX_TRIES, default_lead=autofit.DEFAULT_LEAD_S)
+              max_tries=autofit.MAX_TRIES, default_lead=autofit.DEFAULT_LEAD_S,
+              engines={e: {"label": keystore.ENGINES[e]["label"], "rate_min": lim["rate"][0],
+                           "rate_max": lim["rate"][1], "pitch": lim["pitch"],
+                           "sample_rates": list(lim["sample_rates"]), "model": lim["model"]}
+                       for e, lim in ENGINE_LIMITS.items()},
+              eleven_models=elevenlabs_client.MODELS, eleven_stability=elevenlabs_client.STABILITY)
 
 
 def _history_status(r: dict) -> str:
@@ -251,11 +290,13 @@ def api_generate():
 
     try:
         profile = find_profile(profile_name)
+        engine = profile.get("engine") or "murf"
+        lim = ENGINE_LIMITS.get(engine, ENGINE_LIMITS["murf"])
         # per-line values override the profile defaults
         rate = _int_in_range(data["rate"] if data.get("rate") not in (None, "") else profile.get("rate"),
-                             autofit.RATE_MIN, autofit.RATE_MAX, "Speed")
-        pitch = _int_in_range(data["pitch"] if data.get("pitch") not in (None, "") else profile.get("pitch"),
-                              autofit.PITCH_MIN, autofit.PITCH_MAX, "Pitch")
+                             *lim["rate"], f"Speed ({keystore.ENGINES[engine]['label']})")
+        pitch = (_int_in_range(data["pitch"] if data.get("pitch") not in (None, "") else profile.get("pitch"),
+                               autofit.PITCH_MIN, autofit.PITCH_MAX, "Pitch") if lim["pitch"] else 0)
         target = _seconds(data.get("target"), "Target length")
         if target is not None and target < 0.5:
             raise ValueError("Target length must be at least 0.5 seconds.")
@@ -270,13 +311,27 @@ def api_generate():
         segments, lead, gaps, trail = autofit.split_pauses(text)
     except MurfError as exc:
         return fail(str(exc))
+    note = None
+    if engine == "murf":
+        stripped = [re.sub(r"\s{2,}", " ", EMOTION_TAG_RE.sub("", seg)).strip() for seg in segments]
+        if stripped != segments:
+            note = "Emotion tags like [whispers] only work with ElevenLabs profiles; Murf ignored them."
+        segments = [seg for seg in stripped if seg]
     if not segments:
-        return fail("The line is empty (it only has [pause] tags).")
+        return fail("The line is empty (it only has [pause] or emotion tags).")
 
     def synth(r: int, p: int) -> bytes:
-        # One Murf call per part; the [pause] silences are added here, exactly.
+        # One API call per part; the [pause] silences are added here, exactly.
         settings = {**profile, "rate": r, "pitch": p}
-        clips = [murf_client.synthesize(seg, settings) for seg in segments]
+        if engine == "elevenlabs":
+            # previous/next text keeps the delivery natural across [pause] splits
+            clips = [elevenlabs_client.synthesize(
+                         seg, settings,
+                         previous_text=segments[i - 1] if i else None,
+                         next_text=segments[i + 1] if i + 1 < len(segments) else None)
+                     for i, seg in enumerate(segments)]
+        else:
+            clips = [murf_client.synthesize(seg, settings) for seg in segments]
         if len(clips) == 1 and not lead and not trail:
             return clips[0]
         return audio_tools.join(clips, fmt, gaps, lead, trail)
@@ -300,8 +355,10 @@ def api_generate():
     with _lock:
         PREVIEWS[pid] = {"path": path, "ext": ext, "project": project, "profile": profile_name,
                          "file_name": file_name, "text": text}
+    if note:
+        result["warning"] = f"{result['warning']} {note}" if result.get("warning") else note
     log_history(project, profile_name, file_name, text, _history_status(result))
-    return ok(preview_id=pid, url=f"/api/preview/{pid}", target=target, **result)
+    return ok(preview_id=pid, url=f"/api/preview/{pid}", target=target, engine=engine, **result)
 
 
 @app.get("/api/preview/<pid>")

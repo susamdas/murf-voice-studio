@@ -1,71 +1,36 @@
 """Small Murf API client.
 
-Security rule: API key VALUES never leave this module except inside the
+Security rule: API key VALUES are only fetched from keystore and put into the
 `api-key` request header sent to Murf. Callers only ever see key NAMES.
 """
 
 from __future__ import annotations
 
-import os
 import time
-from pathlib import Path
 
 import requests
-from dotenv import dotenv_values
 
-BASE_DIR = Path(__file__).resolve().parent
-ENV_PATH = BASE_DIR / ".env"
-KEY_PREFIX = "MURF_KEY_"
+import keystore
+from keystore import VoiceError
 
+KEY_PREFIX = keystore.ENGINES["murf"]["prefix"]
 STREAM_URL = "https://global.api.murf.ai/v1/speech/stream"
 VOICES_URL = "https://api.murf.ai/v1/speech/voices"
 TIMEOUT_SECONDS = 60
 
-
-class MurfError(Exception):
-    """An error with a plain-language message that is safe to show the user."""
-
-
-# ---------------------------------------------------------------- API keys
-
-def _all_keys() -> dict[str, str]:
-    """Return {NAME: value} for every MURF_KEY_* variable.
-
-    Re-read on every call so the user can edit .env without restarting.
-    Values from .env take priority over system environment variables.
-    """
-    keys: dict[str, str] = {}
-    for source in (os.environ, dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}):
-        for var, value in source.items():
-            if (var.startswith(KEY_PREFIX) and value and value.strip()
-                    and not value.strip().startswith("paste_your")):  # .env.example placeholder
-                name = var[len(KEY_PREFIX):]
-                if name:
-                    keys[name] = value.strip()
-    return keys
+MurfError = VoiceError  # one error type for every engine
 
 
 def list_key_names() -> list[str]:
-    """Names only (e.g. ["MAIN", "PROJECT2"]) - safe to send to the browser."""
-    return sorted(_all_keys())
+    """Murf key names only - safe to send to the browser."""
+    return keystore.list_key_names("murf")
 
 
 def _get_key(name: str) -> str:
-    key = _all_keys().get(name or "")
-    if not key:
-        raise MurfError(
-            f"API key '{name}' was not found. Add a line "
-            f"{KEY_PREFIX}{name}=your_key to the .env file."
-        )
-    return key
+    return keystore.get_key("murf", name)
 
 
-def _scrub(text: str) -> str:
-    """Remove any key value that might appear in a message."""
-    for value in _all_keys().values():
-        if value and value in text:
-            text = text.replace(value, "***")
-    return text
+_scrub = keystore.scrub
 
 
 # ---------------------------------------------------------------- errors
@@ -88,7 +53,7 @@ def _friendly_error(resp: requests.Response, key_name: str) -> MurfError:
     low = msg.lower()
 
     if status in (401, 403) or "api key" in low or "api-key" in low:
-        text = f"Invalid API key '{key_name}'. Check the value of {KEY_PREFIX}{key_name} in .env."
+        text = f"Invalid API key '{key_name}' (Murf). Check the value of {KEY_PREFIX}{key_name} in .env."
     elif status == 402 or "credit" in low or "quota" in low or "character limit" in low:
         text = f"Out of credits on API key '{key_name}'. Top up your Murf account or use another key."
     elif status == 429:
