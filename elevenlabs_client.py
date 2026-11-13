@@ -64,6 +64,9 @@ def _friendly_error(resp: requests.Response, key_name: str) -> VoiceError:
     if "missing_permissions" in low or "permission" in low:
         text = (f"ElevenLabs API key '{key_name}' is not allowed to do this. In ElevenLabs, open "
                 "Profile → API Keys, edit the key and turn on the needed permission.")
+    elif "free users" in low or "upgrade" in low or "subscription" in low:
+        text = ("Your ElevenLabs plan doesn't allow this. Free plans can only use ElevenLabs' default voices "
+                "through the API; Voice Library voices need a paid plan (Starter or higher).")
     elif "quota" in low or "credits" in low or status == 402:
         # checked before 401: ElevenLabs sends quota_exceeded with HTTP 401
         text = f"Out of credits on ElevenLabs key '{key_name}'. Top up or wait for your monthly reset."

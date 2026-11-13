@@ -208,5 +208,19 @@
     "rate": 0,
     "pitch": 0,
     "stability": 0.0
+  },
+  {
+    "name": "Bangla male – ElevenLabs (Safayet, paid plan)",
+    "engine": "elevenlabs",
+    "voice_id": "AyRPttdqoCVGu6Ae3lPx",
+    "style": "",
+    "locale": "bn",
+    "model": "eleven_v3",
+    "api_key_name": "MAIN",
+    "format": "MP3",
+    "sample_rate": 44100,
+    "rate": 0,
+    "pitch": 0,
+    "stability": 0.0
   }
 ]
