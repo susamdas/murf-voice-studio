@@ -20,6 +20,7 @@ BASE_URL = "https://api.elevenlabs.io"
 TIMEOUT_SECONDS = 60
 DEFAULT_MODEL = "eleven_v3"
 MODELS = ["eleven_v3", "eleven_v4", "eleven_multilingual_v2", "eleven_flash_v2_5"]
+NO_CONTEXT_MODELS = ("eleven_v3", "eleven_v4")  # reject previous_text / next_text
 
 # The app's speed slider is a "rate" like Murf's; ElevenLabs uses a speed
 # factor 0.7-1.2, so speed = 1 + rate/100 and rate is limited to -30..+20.
@@ -129,16 +130,25 @@ def synthesize(text: str, profile: dict, previous_text: str | None = None,
     lang = (profile.get("locale") or "").split("-")[0].strip().lower()
     if lang:
         body["language_code"] = lang  # e.g. "bn"; ignored by models that don't support it
-    if previous_text:
-        body["previous_text"] = previous_text
-    if next_text:
-        body["next_text"] = next_text
+    # Context text keeps the flow natural across [pause] splits, but eleven_v3 / v4
+    # reject it ("not yet supported"), so only send it to the older models.
+    if not body["model_id"].startswith(NO_CONTEXT_MODELS):
+        if previous_text:
+            body["previous_text"] = previous_text
+        if next_text:
+            body["next_text"] = next_text
 
     fmt = str(profile.get("format") or "MP3").upper()
     params = {"output_format": output_format(fmt, int(profile.get("sample_rate") or 44100))}
     key_name = profile.get("api_key_name", "")
-    resp = _request("POST", f"/v1/text-to-speech/{requests.utils.quote(voice_id, safe='')}",
-                    key_name, params=params, json=body)
+    path = f"/v1/text-to-speech/{requests.utils.quote(voice_id, safe='')}"
+    resp = _request("POST", path, key_name, params=params, json=body)
+    if (resp.status_code == 400 and ("previous_text" in body or "next_text" in body)
+            and ("previous_text" in resp.text or "next_text" in resp.text)):
+        # a model that doesn't support context text yet: try once more without it
+        body.pop("previous_text", None)
+        body.pop("next_text", None)
+        resp = _request("POST", path, key_name, params=params, json=body)
     if resp.status_code != 200:
         raise _friendly_error(resp, key_name)
     if "json" in resp.headers.get("Content-Type", "").lower():
