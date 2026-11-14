@@ -11,10 +11,54 @@ Auto-fit steps:
 
 from __future__ import annotations
 
+import re
 from typing import Callable
 
 import audio_tools
 from murf_client import MurfError
+
+# [pause 1.5]  [pause 1.5s]  [pause 800ms]  [pause 2 sec]  (case-insensitive)
+PAUSE_RE = re.compile(r"\[\s*pause\s+(\d+(?:[.,]\d+)?)\s*(ms|s|sec|secs|seconds?)?\s*\]", re.IGNORECASE)
+PAUSE_MAX_S = 10.0
+MAX_SEGMENTS = 20
+
+
+def split_pauses(text: str) -> tuple[list[str], float, list[float], float]:
+    """Split a line on [pause X] tags.
+
+    Returns (segments, lead_s, gaps_s, trail_s):
+      'এটা... [pause 1.5] বাবার ক্রিস্টাল!' -> (['এটা...', 'বাবার ক্রিস্টাল!'], 0, [1.5], 0)
+    Murf never sees the tags; the app inserts exact silence instead.
+    """
+    segments: list[str] = []
+    gaps: list[float] = []
+    lead = pending = 0.0
+    pos = 0
+    for m in PAUSE_RE.finditer(text):
+        chunk = text[pos:m.start()].strip()
+        if chunk:
+            if segments:
+                gaps.append(pending)
+            else:
+                lead = pending
+            segments.append(chunk)
+            pending = 0.0
+        secs = float(m.group(1).replace(",", "."))
+        if (m.group(2) or "").lower() == "ms":
+            secs /= 1000
+        pending += min(secs, PAUSE_MAX_S)
+        pos = m.end()
+    chunk = text[pos:].strip()
+    if chunk:
+        if segments:
+            gaps.append(pending)
+        else:
+            lead = pending
+        segments.append(chunk)
+        pending = 0.0
+    if len(segments) > MAX_SEGMENTS:
+        raise MurfError(f"Too many [pause] tags in one line (max {MAX_SEGMENTS - 1}). Split it into more lines.")
+    return segments, lead, gaps, pending
 
 # Murf API limits (POST /v1/speech/stream: rate and pitch are integers -50..50)
 RATE_MIN, RATE_MAX = -50, 50
@@ -36,14 +80,16 @@ def _tolerance(target: float) -> float:
     return max(0.15, 0.04 * target)
 
 
-def _next_rate(tries: list[dict], aim: float) -> int:
-    """Estimate the speed that gives `aim` seconds of speech.
+def _next_rate(tries: list[dict], aim: float, fixed: float = 0.0) -> int:
+    """Estimate the speed that gives `aim` seconds of audio.
 
-    Model: duration ~ k / (100 + rate). With two or more tries, use a secant
-    step between the last two (handles voices that don't follow the model).
+    Model: duration ~ fixed + k / (100 + rate), where `fixed` is silence from
+    [pause] tags (it doesn't change with speed). With two or more tries, use a
+    secant step between the last two (handles voices that don't follow the model).
     """
     last = tries[-1]
-    guess = (100 + last["rate"]) * last["duration"] / aim - 100
+    spoken, wanted = max(0.1, last["duration"] - fixed), max(0.1, aim - fixed)
+    guess = (100 + last["rate"]) * spoken / wanted - 100
     if len(tries) >= 2:
         prev = tries[-2]
         dd = last["duration"] - prev["duration"]
@@ -56,10 +102,12 @@ def _next_rate(tries: list[dict], aim: float) -> int:
 
 def generate_line(synth: Callable[[int, int], bytes], fmt: str, rate: int, pitch: int,
                   target: float | None = None, auto_fit: bool = False,
-                  before: float | None = None, after: float | None = None) -> dict:
+                  before: float | None = None, after: float | None = None,
+                  fixed: float = 0.0) -> dict:
     """Return the final audio and a report of what was done.
 
-    synth(rate, pitch) -> audio bytes (one Murf call).
+    synth(rate, pitch) -> audio bytes (one Murf call per text part).
+    fixed: seconds of [pause] silence inside the audio (doesn't change with speed).
     before / after: manual silence in seconds (None = not set).
     """
     rate = int(clamp(rate, RATE_MIN, RATE_MAX))
@@ -108,7 +156,7 @@ def generate_line(synth: Callable[[int, int], bytes], fmt: str, rate: int, pitch
             break  # already at the fastest natural speed
         if d < speech_target and r <= NATURAL_RATE_MIN:
             break  # already at the slowest natural speed: pad with silence
-        nxt = _next_rate(tries, aim)
+        nxt = _next_rate(tries, aim, fixed)
         if nxt in {t["rate"] for t in tries}:
             break  # no new speed left to try
         r = nxt
